@@ -47,4 +47,21 @@ export const addDocumentResponseHeaders = (request, headers) => {
   return headers;
 };
 
+// Login helper
+export const login = async (request) => {
+  const url = new URL(request.url);
+  const shop = url.searchParams.get("shop");
+  
+  if (!shop) {
+    throw new Error("Missing shop parameter");
+  }
+  
+  return await shopify.auth.begin({
+    shop,
+    callbackPath: "/auth/callback",
+    isOnline: false,
+    rawRequest: request
+  });
+};
+
 export default shopify;
