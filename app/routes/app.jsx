@@ -1,27 +1,30 @@
-import { Outlet, useLoaderData } from "react-router";
-import { AppProvider } from "@shopify/shopify-app-react-router/react";
-import { boundary } from "@shopify/shopify-app-react-router/server";
-import { authenticate } from "../shopify.server.js";
+import { AppProvider } from "@shopify/app-bridge-react";
+import { Outlet } from "react-router";
+import { useMemo } from "react";
 
-export const loader = async ({ request }) => {
-  await authenticate.admin(request);
-  return { apiKey: process.env.SHOPIFY_API_KEY || "" };
-};
-
+/**
+ * Shopify Embedded App Root
+ * Compatible with:
+ * - React Router v7
+ * - Vite
+ * - Render
+ * - Shopify App Bridge (official)
+ */
 export default function App() {
-  const { apiKey } = useLoaderData();
+  const appBridgeConfig = useMemo(() => {
+    const params = new URLSearchParams(window.location.search);
+    const host = params.get("host");
+
+    return {
+      apiKey: import.meta.env.VITE_SHOPIFY_API_KEY,
+      host,
+      forceRedirect: true,
+    };
+  }, []);
 
   return (
-    <AppProvider embedded apiKey={apiKey}>
-      <ui-nav-menu>
-        <a href="/app">Serial Numbers</a>
-        <a href="/app/additional">Additional</a>
-      </ui-nav-menu>
-
+    <AppProvider config={appBridgeConfig}>
       <Outlet />
     </AppProvider>
   );
 }
-
-export const headers = (args) => boundary.headers(args);
-export const ErrorBoundary = boundary.error;
