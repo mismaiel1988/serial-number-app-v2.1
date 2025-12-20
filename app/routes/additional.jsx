@@ -1,11 +1,17 @@
-import { useLoaderData } from "react-router";
+import { json } from "react-router";
+import { useLoaderData, Form, useNavigation, useActionData } from "react-router";
+import { authenticate } from "../shopify.server";
 import prisma from "../db.server";
+import { syncOrdersFromShopify } from "../services/orders.server";
 
 /**
  * Loader: Fetch orders from database
  */
-export async function loader() {
+export async function loader({ request }) {
   try {
+    // Authenticate the request
+    const { session } = await authenticate.admin(request);
+    
     // Fetch orders with saddle line items
     const orders = await prisma.order.findMany({
       where: {
@@ -31,25 +37,54 @@ export async function loader() {
       take: 50
     });
 
-    return {
+    return json({
       orders,
-      shop: "Test Shop"
-    };
+      shop: session.shop
+    });
   } catch (error) {
     console.error("Loader error:", error);
-    return {
+    return json({
       orders: [],
-      shop: "Error loading",
+      shop: "Error",
       error: error.message
-    };
+    });
   }
 }
 
 /**
- * Component: Orders page
+ * Action: Handle sync button click
+ */
+export async function action({ request }) {
+  try {
+    const { session } = await authenticate.admin(request);
+    
+    const formData = await request.formData();
+    const actionType = formData.get("action");
+    
+    if (actionType === "sync") {
+      const result = await syncOrdersFromShopify(session, {
+        limit: 250,
+        onlySaddleOrders: true
+      });
+      
+      return json(result);
+    }
+    
+    return json({ success: false, error: "Unknown action" });
+  } catch (error) {
+    console.error("Action error:", error);
+    return json({ success: false, error: error.message });
+  }
+}
+
+/**
+ * Component: Orders page with sync functionality
  */
 export default function AdditionalPage() {
   const { orders, shop, error } = useLoaderData();
+  const actionData = useActionData();
+  const navigation = useNavigation();
+  const isLoading = navigation.state === "submitting";
 
   if (error) {
     return (
@@ -62,12 +97,52 @@ export default function AdditionalPage() {
 
   return (
     <div style={{ padding: "20px", maxWidth: "1200px", margin: "0 auto" }}>
-      <div style={{ marginBottom: "20px" }}>
-        <h1 style={{ margin: 0 }}>Saddle Orders</h1>
-        <p style={{ color: "#666", margin: "5px 0 0 0" }}>
-          Shop: {shop} | Total orders: {orders.length}
-        </p>
+      <div style={{ marginBottom: "20px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <div>
+          <h1 style={{ margin: 0 }}>Saddle Orders</h1>
+          <p style={{ color: "#666", margin: "5px 0 0 0" }}>
+            Shop: {shop} | Total orders: {orders.length}
+          </p>
+        </div>
+        
+        <Form method="post">
+          <input type="hidden" name="action" value="sync" />
+          <button
+            type="submit"
+            disabled={isLoading}
+            style={{
+              padding: "10px 20px",
+              backgroundColor: isLoading ? "#ccc" : "#008060",
+              color: "white",
+              border: "none",
+              borderRadius: "4px",
+              cursor: isLoading ? "not-allowed" : "pointer",
+              fontSize: "14px",
+              fontWeight: "600"
+            }}
+          >
+            {isLoading ? "Syncing..." : "Sync Orders from Shopify"}
+          </button>
+        </Form>
       </div>
+
+      {actionData && (
+        <div style={{
+          padding: "12px",
+          marginBottom: "20px",
+          borderRadius: "4px",
+          backgroundColor: actionData.success ? "#e3f5ef" : "#fff4e6",
+          color: actionData.success ? "#008060" : "#b98900"
+        }}>
+          {actionData.success ? (
+            <p style={{ margin: 0 }}>
+              ✅ Synced {actionData.totalOrders} orders with {actionData.saddleLineItems} saddle line items
+            </p>
+          ) : (
+            <p style={{ margin: 0 }}>❌ Error: {actionData.error}</p>
+          )}
+        </div>
+      )}
 
       {orders.length === 0 ? (
         <div style={{
@@ -78,7 +153,7 @@ export default function AdditionalPage() {
         }}>
           <h2 style={{ color: "#666" }}>No saddle orders found</h2>
           <p style={{ color: "#999" }}>
-            Database is empty. Sync functionality will be added next.
+            Click "Sync Orders from Shopify" to import your orders
           </p>
         </div>
       ) : (
