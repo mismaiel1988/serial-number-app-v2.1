@@ -1,4 +1,5 @@
-import { Provider } from "@shopify/app-bridge-react";
+import AppBridgeReact from "@shopify/app-bridge-react";
+const { Provider } = AppBridgeReact;
 import { Outlet } from "react-router";
 import { useMemo } from "react";
 
