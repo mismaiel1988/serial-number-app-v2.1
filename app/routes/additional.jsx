@@ -1,4 +1,3 @@
-import { json } from "react-router";
 import { useLoaderData, Form, useNavigation, useActionData } from "react-router";
 import { authenticate } from "../shopify.server";
 import prisma from "../db.server";
@@ -37,17 +36,17 @@ export async function loader({ request }) {
       take: 50
     });
 
-    return json({
+    return {
       orders,
       shop: session.shop
-    });
+    };
   } catch (error) {
     console.error("Loader error:", error);
-    return json({
+    return {
       orders: [],
       shop: "Error",
       error: error.message
-    });
+    };
   }
 }
 
@@ -67,13 +66,13 @@ export async function action({ request }) {
         onlySaddleOrders: true
       });
       
-      return json(result);
+      return result;
     }
     
-    return json({ success: false, error: "Unknown action" });
+    return { success: false, error: "Unknown action" };
   } catch (error) {
     console.error("Action error:", error);
-    return json({ success: false, error: error.message });
+    return { success: false, error: error.message };
   }
 }
 
