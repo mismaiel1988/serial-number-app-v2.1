@@ -1,5 +1,5 @@
 import { redirect } from "react-router";
-import { shopifyApi, LATEST_API_VERSION } from "@shopify/shopify-api";
+import { shopifyApi, "2025-10" } from "@shopify/shopify-api";
 
 /**
  * Shopify OAuth callback handler
@@ -11,7 +11,7 @@ const shopify = shopifyApi({
   apiSecretKey: process.env.SHOPIFY_API_SECRET,
   scopes: process.env.SCOPES?.split(",") ?? [],
   hostName: process.env.HOST?.replace(/^https?:\/\//, ""),
-  apiVersion: LATEST_API_VERSION,
+  apiVersion: "2025-10",
   isEmbeddedApp: true
 });
 
