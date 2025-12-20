@@ -126,19 +126,3 @@ model SerialNumber {
   @@index([serialNumber])
   @@index([lineItemId])
 }
-
-/**
- * LEGACY: Keep for migration reference, will be deprecated
- */
-model saddle_orders {
-  id                 Int      @id @default(autoincrement())
-  order_id           String   @unique
-  order_name         String?
-  created_at         DateTime @default(now())
-  fulfillment_status String?
-  customer_name      String?
-  customer_email     String?
-  line_items         String?
-  serial_numbers     String?
-  last_synced        DateTime @updatedAt
-}
