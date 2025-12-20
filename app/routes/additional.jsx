@@ -1,15 +1,16 @@
 import { useLoaderData, Form, useNavigation, useActionData } from "react-router";
-import { authenticate } from "../shopify.server";
 import prisma from "../db.server";
 import { syncOrdersFromShopify } from "../services/orders.server";
+import { shopify } from "../shopify.server";
 
 /**
  * Loader: Fetch orders from database
  */
 export async function loader({ request }) {
   try {
-    // Authenticate the request
-    const { session } = await authenticate.admin(request);
+    // Get session from request (for embedded apps, session is in URL params)
+    const url = new URL(request.url);
+    const shop = url.searchParams.get("shop");
     
     // Fetch orders with saddle line items
     const orders = await prisma.order.findMany({
@@ -38,7 +39,7 @@ export async function loader({ request }) {
 
     return {
       orders,
-      shop: session.shop
+      shop: shop || "Your Shop"
     };
   } catch (error) {
     console.error("Loader error:", error);
@@ -55,7 +56,22 @@ export async function loader({ request }) {
  */
 export async function action({ request }) {
   try {
-    const { session } = await authenticate.admin(request);
+    const url = new URL(request.url);
+    const shop = url.searchParams.get("shop");
+    
+    if (!shop) {
+      return { success: false, error: "Missing shop parameter" };
+    }
+    
+    // Get session from database
+    const session = await prisma.session.findFirst({
+      where: { shop, isOnline: false },
+      orderBy: { id: "desc" }
+    });
+    
+    if (!session) {
+      return { success: false, error: "No active session found" };
+    }
     
     const formData = await request.formData();
     const actionType = formData.get("action");
