@@ -6,12 +6,11 @@
     "node": ">=20.19 <22 || >=22.12"
   },
   "scripts": {
-    "dev": "react-router dev",
-    "build": "react-router build",
-    "start": "react-router-serve ./build/server/index.js",
+    "dev": "vite",
+    "build": "vite build",
+    "start": "node build/server/index.js",
 
     "postinstall": "prisma generate",
-
     "setup": "prisma generate && prisma migrate deploy"
   },
   "dependencies": {
