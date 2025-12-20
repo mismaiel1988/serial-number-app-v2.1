@@ -9,13 +9,12 @@ datasource db {
 
 /**
  * Required by @shopify/shopify-app-session-storage-prisma
- * (PrismaSessionStorage)
  */
 model Session {
-  id                  String   @id
+  id                  String    @id
   shop                String
   state               String
-  isOnline            Boolean  @default(false)
+  isOnline            Boolean   @default(false)
   scope               String?
   expires             DateTime?
   accessToken         String
@@ -23,38 +22,123 @@ model Session {
   firstName           String?
   lastName            String?
   email               String?
-  accountOwner        Boolean  @default(false)
+  accountOwner        Boolean   @default(false)
   locale              String?
-  collaborator        Boolean? @default(false)
-  emailVerified       Boolean? @default(false)
+  collaborator        Boolean?  @default(false)
+  emailVerified       Boolean?  @default(false)
   refreshToken        String?
   refreshTokenExpires DateTime?
 }
 
 /**
- * Stores the order snapshot + manual serial entries for saddle line items.
- * This is a lightweight cache so the admin UI can load fast.
+ * PHASE 2: Orders table
+ * Stores Shopify order metadata
+ */
+model Order {
+  id                 Int           @id @default(autoincrement())
+  shopifyOrderId     String        @unique // gid://shopify/Order/...
+  orderNumber        String        // e.g., #1001
+  orderName          String?       // e.g., #1001 or custom
+  createdAt          DateTime
+  updatedAt          DateTime      @updatedAt
+  fulfillmentStatus  String?       // fulfilled, unfulfilled, partial
+  financialStatus    String?       // paid, pending, refunded
+  customerName       String?
+  customerEmail      String?
+  customerPhone      String?
+  totalPrice         String?
+  currency           String?
+  tags               String?       // comma-separated tags
+  note               String?
+  
+  // Relations
+  lineItems          LineItem[]
+  
+  // Sync tracking
+  lastSyncedAt       DateTime      @default(now())
+  
+  @@index([shopifyOrderId])
+  @@index([orderNumber])
+  @@index([customerEmail])
+}
+
+/**
+ * PHASE 2: Line Items table
+ * Stores all line items from orders
+ */
+model LineItem {
+  id                 Int            @id @default(autoincrement())
+  shopifyLineItemId  String         @unique // gid://shopify/LineItem/...
+  orderId            Int
+  order              Order          @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  
+  // Product details
+  productId          String?        // gid://shopify/Product/...
+  variantId          String?        // gid://shopify/ProductVariant/...
+  productTitle       String
+  variantTitle       String?
+  sku                String?
+  quantity           Int
+  price              String?
+  
+  // Saddle identification
+  isSaddle           Boolean        @default(false)
+  productType        String?
+  productTags        String?        // comma-separated
+  
+  // Relations
+  serialNumbers      SerialNumber[]
+  
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+  
+  @@index([orderId])
+  @@index([shopifyLineItemId])
+  @@index([isSaddle])
+  @@index([sku])
+}
+
+/**
+ * PHASE 3: Serial Numbers table
+ * One record per physical saddle unit
+ */
+model SerialNumber {
+  id                 Int       @id @default(autoincrement())
+  serialNumber       String    @unique // e.g., BC-12345
+  
+  // Relations
+  lineItemId         Int
+  lineItem           LineItem  @relation(fields: [lineItemId], references: [id], onDelete: Cascade)
+  
+  // Unit tracking (for quantity > 1)
+  unitIndex          Int       // 1, 2, 3... for quantity-based entry
+  
+  // Audit trail
+  enteredBy          String?   // user email or ID
+  enteredAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+  
+  // Shopify sync status
+  syncedToShopify    Boolean   @default(false)
+  syncedAt           DateTime?
+  
+  @@unique([lineItemId, unitIndex]) // Prevent duplicate units per line item
+  @@index([serialNumber])
+  @@index([lineItemId])
+}
+
+/**
+ * LEGACY: Keep for migration reference, will be deprecated
  */
 model saddle_orders {
   id                 Int      @id @default(autoincrement())
-  order_id            String   @unique
-  order_name          String?
-  created_at          DateTime @default(now())
-  fulfillment_status  String?
-  customer_name       String?
-  customer_email      String?
-
-  /**
-   * JSON string of all line items from Shopify (including product tags),
-   * used to render saddle units + quantities.
-   */
-  line_items          String?
-
-  /**
-   * JSON string array:
-   * [{ lineItemId: "gid://shopify/LineItem/..", unitIndex: 1, serialNumber: "XX-12345" }, ...]
-   */
-  serial_numbers      String?
-
-  last_synced         DateTime @updatedAt
+  order_id           String   @unique
+  order_name         String?
+  created_at         DateTime @default(now())
+  fulfillment_status String?
+  customer_name      String?
+  customer_email     String?
+  line_items         String?
+  serial_numbers     String?
+  last_synced        DateTime @updatedAt
 }
