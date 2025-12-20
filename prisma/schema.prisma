@@ -1,0 +1,60 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+/**
+ * Required by @shopify/shopify-app-session-storage-prisma
+ * (PrismaSessionStorage)
+ */
+model Session {
+  id                  String   @id
+  shop                String
+  state               String
+  isOnline            Boolean  @default(false)
+  scope               String?
+  expires             DateTime?
+  accessToken         String
+  userId              BigInt?
+  firstName           String?
+  lastName            String?
+  email               String?
+  accountOwner        Boolean  @default(false)
+  locale              String?
+  collaborator        Boolean? @default(false)
+  emailVerified       Boolean? @default(false)
+  refreshToken        String?
+  refreshTokenExpires DateTime?
+}
+
+/**
+ * Stores the order snapshot + manual serial entries for saddle line items.
+ * This is a lightweight cache so the admin UI can load fast.
+ */
+model saddle_orders {
+  id                 Int      @id @default(autoincrement())
+  order_id            String   @unique
+  order_name          String?
+  created_at          DateTime @default(now())
+  fulfillment_status  String?
+  customer_name       String?
+  customer_email      String?
+
+  /**
+   * JSON string of all line items from Shopify (including product tags),
+   * used to render saddle units + quantities.
+   */
+  line_items          String?
+
+  /**
+   * JSON string array:
+   * [{ lineItemId: "gid://shopify/LineItem/..", unitIndex: 1, serialNumber: "XX-12345" }, ...]
+   */
+  serial_numbers      String?
+
+  last_synced         DateTime @updatedAt
+}
