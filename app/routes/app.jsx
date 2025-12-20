@@ -4,11 +4,9 @@ import { useMemo } from "react";
 
 /**
  * Shopify Embedded App Root
- * Compatible with:
  * - React Router v7
  * - Vite
  * - Render
- * - Shopify App Bridge (official)
  */
 export default function App() {
   const appBridgeConfig = useMemo(() => {
