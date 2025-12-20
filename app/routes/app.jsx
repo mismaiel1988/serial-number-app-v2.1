@@ -1,14 +1,7 @@
-import AppBridgeProvider from "@shopify/app-bridge-react";
+import { Provider } from "@shopify/app-bridge-react";
 import { Outlet } from "react-router";
 import { useMemo } from "react";
 
-/**
- * Root layout for Shopify embedded app
- * - @shopify/app-bridge-react (default export)
- * - React Router v7
- * - Vite
- * - Render
- */
 export default function App() {
   const appBridgeConfig = useMemo(() => {
     const params = new URLSearchParams(window.location.search);
@@ -17,13 +10,13 @@ export default function App() {
     return {
       apiKey: import.meta.env.VITE_SHOPIFY_API_KEY,
       host,
-      forceRedirect: true,
+      forceRedirect: true
     };
   }, []);
 
   return (
-    <AppBridgeProvider config={appBridgeConfig}>
+    <Provider config={appBridgeConfig}>
       <Outlet />
-    </AppBridgeProvider>
+    </Provider>
   );
 }
