@@ -40,4 +40,11 @@ export const shopify = shopifyApi({
 // Export required functions for routes
 export const authenticate = shopify.authenticate || {};
 export const apiVersion = "2024-10";
+
+// Add document response headers helper
+export const addDocumentResponseHeaders = (request, headers) => {
+  headers.set("Content-Security-Policy", "frame-ancestors https://*.myshopify.com https://admin.shopify.com");
+  return headers;
+};
+
 export default shopify;
