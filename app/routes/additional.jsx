@@ -1,105 +1,72 @@
-import { useState } from "react";
-import { useLoaderData, Form, useNavigation } from "react-router";
+import { useLoaderData } from "react-router";
 import prisma from "../db.server";
-import { syncOrdersFromShopify } from "../services/orders.server";
-import { shopify } from "../shopify.server";
 
 /**
  * Loader: Fetch orders from database
  */
-export async function loader({ request }) {
-  // Get session to verify authentication
-  const { session } = await shopify.authenticate.admin(request);
-  
-  // Fetch orders with saddle line items
-  const orders = await prisma.order.findMany({
-    where: {
-      lineItems: {
-        some: {
-          isSaddle: true
+export async function loader() {
+  try {
+    // Fetch orders with saddle line items
+    const orders = await prisma.order.findMany({
+      where: {
+        lineItems: {
+          some: {
+            isSaddle: true
+          }
         }
-      }
-    },
-    include: {
-      lineItems: {
-        where: {
-          isSaddle: true
-        },
-        include: {
-          serialNumbers: true
+      },
+      include: {
+        lineItems: {
+          where: {
+            isSaddle: true
+          },
+          include: {
+            serialNumbers: true
+          }
         }
-      }
-    },
-    orderBy: {
-      createdAt: "desc"
-    },
-    take: 50
-  });
-
-  return {
-    orders,
-    shop: session.shop
-  };
-}
-
-/**
- * Action: Handle sync button click
- */
-export async function action({ request }) {
-  const { session } = await shopify.authenticate.admin(request);
-  
-  const formData = await request.formData();
-  const action = formData.get("action");
-  
-  if (action === "sync") {
-    const result = await syncOrdersFromShopify(session, {
-      limit: 250,
-      onlySaddleOrders: true
+      },
+      orderBy: {
+        createdAt: "desc"
+      },
+      take: 50
     });
-    
-    return result;
+
+    return {
+      orders,
+      shop: "Test Shop"
+    };
+  } catch (error) {
+    console.error("Loader error:", error);
+    return {
+      orders: [],
+      shop: "Error loading",
+      error: error.message
+    };
   }
-  
-  return { success: false, error: "Unknown action" };
 }
 
 /**
- * Component: Orders page with sync functionality
+ * Component: Orders page
  */
 export default function AdditionalPage() {
-  const { orders, shop } = useLoaderData();
-  const navigation = useNavigation();
-  const isLoading = navigation.state === "submitting";
+  const { orders, shop, error } = useLoaderData();
+
+  if (error) {
+    return (
+      <div style={{ padding: "20px" }}>
+        <h1>Error</h1>
+        <p style={{ color: "red" }}>{error}</p>
+      </div>
+    );
+  }
 
   return (
     <div style={{ padding: "20px", maxWidth: "1200px", margin: "0 auto" }}>
-      <div style={{ marginBottom: "20px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <div>
-          <h1 style={{ margin: 0 }}>Saddle Orders</h1>
-          <p style={{ color: "#666", margin: "5px 0 0 0" }}>
-            Shop: {shop} | Total orders: {orders.length}
-          </p>
-        </div>
-        
-        <Form method="post">
-          <input type="hidden" name="action" value="sync" />
-          <button
-            type="submit"
-            disabled={isLoading}
-            style={{
-              padding: "10px 20px",
-              backgroundColor: isLoading ? "#ccc" : "#008060",
-              color: "white",
-              border: "none",
-              borderRadius: "4px",
-              cursor: isLoading ? "not-allowed" : "pointer",
-              fontSize: "14px",
-              fontWeight: "600"
-            }}
-          >
-            {isLoading ? "Syncing..." : "Sync Orders from Shopify"}
-          </button>
-        </Form>
+      <div style={{ marginBottom: "20px" }}>
+        <h1 style={{ margin: 0 }}>Saddle Orders</h1>
+        <p style={{ color: "#666", margin: "5px 0 0 0" }}>
+          Shop: {shop} | Total orders: {orders.length}
+        </p>
       </div>
 
       {orders.length === 0 ? (
@@ -111,7 +78,7 @@ export default function AdditionalPage() {
         }}>
           <h2 style={{ color: "#666" }}>No saddle orders found</h2>
           <p style={{ color: "#999" }}>
-            Click "Sync Orders from Shopify" to import your orders
+            Database is empty. Sync functionality will be added next.
           </p>
         </div>
       ) : (
