@@ -1,5 +1,3 @@
-import { json } from "react-router";
-
 /**
  * App index route
  * Replaces deprecated @shopify/shopify-app-react-router usage
@@ -7,9 +5,9 @@ import { json } from "react-router";
  */
 
 export async function loader() {
-  return json({
+  return {
     status: "ok"
-  });
+  };
 }
 
 export default function AppIndex() {
