@@ -1,34 +1,37 @@
-import "@shopify/shopify-app-react-router/adapters/node";
-import {
-  ApiVersion,
-  AppDistribution,
-  shopifyApp,
-} from "@shopify/shopify-app-react-router";
-import { PrismaSessionStorage } from "@shopify/shopify-app-session-storage-prisma";
+import { shopifyApi, LATEST_API_VERSION } from "@shopify/shopify-api";
 import prisma from "./db.server";
 
-const shopify = shopifyApp({
-  apiKey: process.env.SHOPIFY_API_KEY,
-  apiSecretKey: process.env.SHOPIFY_API_SECRET || "",
-  apiVersion: ApiVersion.October24,
-  scopes: process.env.SCOPES?.split(","),
-  appUrl: process.env.SHOPIFY_APP_URL || "",
-  authPathPrefix: "/auth",
-  sessionStorage: new PrismaSessionStorage(prisma),
-  distribution: AppDistribution.AppStore,
-  future: {
-    expiringOfflineAccessTokens: true,
-  },
-  ...(process.env.SHOP_CUSTOM_DOMAIN
-    ? { customShopDomains: [process.env.SHOP_CUSTOM_DOMAIN] }
-    : {}),
-});
+/**
+ * Shopify server configuration
+ * Replaces deprecated @shopify/shopify-app-react-router usage
+ * Safe for Vite SSR + React Router v7
+ */
 
-export default shopify;
-export const apiVersion = ApiVersion.October24;
-export const addDocumentResponseHeaders = shopify.addDocumentResponseHeaders;
-export const authenticate = shopify.authenticate;
-export const unauthenticated = shopify.unauthenticated;
-export const login = shopify.login;
-export const registerWebhooks = shopify.registerWebhooks;
-export const sessionStorage = shopify.sessionStorage;
+export const shopify = shopifyApi({
+  apiKey: process.env.SHOPIFY_API_KEY,
+  apiSecretKey: process.env.SHOPIFY_API_SECRET,
+  scopes: process.env.SCOPES?.split(",") ?? [],
+  hostName: process.env.SHOPIFY_APP_URL
+    ? new URL(process.env.SHOPIFY_APP_URL).host
+    : undefined,
+  apiVersion: "2025-10",
+  isEmbeddedApp: true,
+  isCustomStoreApp: false,
+  sessionStorage: {
+    async storeSession(session) {
+      await prisma.session.upsert({
+        where: { id: session.id },
+        update: session,
+        create: session
+      });
+      return true;
+    },
+    async loadSession(id) {
+      return prisma.session.findUnique({ where: { id } });
+    },
+    async deleteSession(id) {
+      await prisma.session.delete({ where: { id } });
+      return true;
+    }
+  }
+});
