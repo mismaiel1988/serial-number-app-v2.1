@@ -1,3 +1,4 @@
+import "@shopify/shopify-api/adapters/node";
 import { shopifyApi } from "@shopify/shopify-api";
 import prisma from "./db.server";
 
@@ -37,22 +38,6 @@ export const shopify = shopifyApi({
 });
 
 // Export required functions for routes
-export const authenticate = {
-  webhook: async (request) => {
-    // Add webhook authentication logic here
-    return { topic: "", shop: "", session: null, payload: {} };
-  },
-  admin: async (request) => {
-    // Add admin authentication logic here
-    return { session: null, admin: null };
-  }
-};
-
+export const authenticate = shopify.authenticate || {};
 export const apiVersion = "2024-10";
-export const addDocumentResponseHeaders = () => {};
-export const unauthenticated = {};
-export const login = () => {};
-export const registerWebhooks = async () => {};
-export const sessionStorage = shopify.config.sessionStorage;
-
 export default shopify;
