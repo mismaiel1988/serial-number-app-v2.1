@@ -1,12 +1,13 @@
-import { AppProvider } from "@shopify/app-bridge-react";
+import { Provider as AppBridgeProvider } from "@shopify/app-bridge-react";
 import { Outlet } from "react-router";
 import { useMemo } from "react";
 
 /**
- * Shopify Embedded App Root
+ * Root layout for Shopify embedded app
  * - React Router v7
  * - Vite
  * - Render
+ * - Shopify App Bridge (correct v4+ API)
  */
 export default function App() {
   const appBridgeConfig = useMemo(() => {
@@ -21,8 +22,8 @@ export default function App() {
   }, []);
 
   return (
-    <AppProvider config={appBridgeConfig}>
+    <AppBridgeProvider config={appBridgeConfig}>
       <Outlet />
-    </AppProvider>
+    </AppBridgeProvider>
   );
 }
