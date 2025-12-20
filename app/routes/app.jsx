@@ -1,11 +1,10 @@
-import { AppBridgeProvider } from "@shopify/app-bridge-react";
+import AppBridgeProvider from "@shopify/app-bridge-react";
 import { Outlet } from "react-router";
 import { useMemo } from "react";
 
 /**
  * Root layout for Shopify embedded app
- * Compatible with:
- * - @shopify/app-bridge-react v4+
+ * - @shopify/app-bridge-react (default export)
  * - React Router v7
  * - Vite
  * - Render
