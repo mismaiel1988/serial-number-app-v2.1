@@ -1,18 +1,26 @@
-FROM node:20-alpine
-RUN apk add --no-cache openssl
+# ---- Base image ----
+FROM node:20-slim
 
-EXPOSE 3000
+# ---- Set working directory ----
+WORKDIR /opt/render/project/src
 
-WORKDIR /app
-
-ENV NODE_ENV=production
-
+# ---- Install dependencies ----
+# Copy only package files first for better caching
 COPY package.json package-lock.json* ./
 
-RUN npm ci --omit=dev && npm cache clean --force
+RUN npm install
 
+# ---- Copy app source ----
 COPY . .
 
+# ---- Generate Prisma client ----
+RUN npx prisma generate
+
+# ---- Build the app (Vite) ----
 RUN npm run build
 
-CMD ["npm", "run", "docker-start"]
+# ---- Expose port (Render expects 10000) ----
+EXPOSE 10000
+
+# ---- Start the server ----
+CMD ["node", "build/server/index.js"]
