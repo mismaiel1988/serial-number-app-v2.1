@@ -14,7 +14,7 @@ export const shopify = shopifyApi({
   hostName: process.env.SHOPIFY_APP_URL
     ? new URL(process.env.SHOPIFY_APP_URL).host
     : undefined,
-  apiVersion: "2025-10",
+  apiVersion: "2024-10",
   isEmbeddedApp: true,
   isCustomStoreApp: false,
   sessionStorage: {
@@ -48,7 +48,7 @@ export const authenticate = {
   }
 };
 
-export const apiVersion = "2025-10";
+export const apiVersion = "2024-10";
 export const addDocumentResponseHeaders = () => {};
 export const unauthenticated = {};
 export const login = () => {};
