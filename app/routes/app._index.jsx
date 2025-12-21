@@ -1,20 +1,19 @@
-/**
- * App index route
- * Replaces deprecated @shopify/shopify-app-react-router usage
- * Safe for Vite SSR + React Router v7
- */
+import { redirect } from "react-router";
 
-export async function loader() {
-  return {
-    status: "ok"
-  };
+export async function loader({ request }) {
+  // Get shop from URL params
+  const url = new URL(request.url);
+  const shop = url.searchParams.get("shop");
+  
+  // Redirect to /additional with shop param
+  if (shop) {
+    return redirect(`/additional?shop=${shop}`);
+  }
+  
+  // If no shop param, still redirect but without it
+  return redirect("/additional");
 }
 
 export default function AppIndex() {
-  return (
-    <div style={{ padding: "1.5rem" }}>
-      <h1>Serial Number App</h1>
-      <p>The app is running successfully.</p>
-    </div>
-  );
+  return null; // This won't render because of the redirect
 }
