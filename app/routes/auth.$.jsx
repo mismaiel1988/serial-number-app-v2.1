@@ -1,5 +1,5 @@
 import { redirect } from "react-router";
-import { shopifyApi } from "@shopify/shopify-api";
+import { shopify } from "../shopify.server";
 import prisma from "../db.server";
 
 /**
@@ -7,70 +7,88 @@ import prisma from "../db.server";
  * Handles both the initial auth request and the callback
  */
 
-const shopify = shopifyApi({
-  apiKey: process.env.SHOPIFY_API_KEY,
-  apiSecretKey: process.env.SHOPIFY_API_SECRET,
-  scopes: process.env.SCOPES?.split(",") ?? [],
-  hostName: process.env.SHOPIFY_APP_URL
-    ? new URL(process.env.SHOPIFY_APP_URL).host
-    : undefined,
-  apiVersion: "2024-10",
-  isEmbeddedApp: true,
-  isCustomStoreApp: false,
-});
-
 export async function loader({ request }) {
   const url = new URL(request.url);
   const shop = url.searchParams.get("shop");
   const code = url.searchParams.get("code");
   const host = url.searchParams.get("host");
+  const hmac = url.searchParams.get("hmac");
+  const state = url.searchParams.get("state");
 
-  console.log("Auth route called:", { shop, hasCode: !!code, host });
+  console.log("Auth route called:", { shop, hasCode: !!code, host, hmac, state });
 
   if (!shop) {
     throw new Response("Missing shop parameter", { status: 400 });
   }
 
-  // If we have a code, this is the callback from Shopify
-  if (code) {
+  // If we have a code and hmac, this is the callback from Shopify
+  if (code && hmac) {
     console.log("Processing OAuth callback");
     
     try {
-      // Complete the OAuth flow
-      const callback = await shopify.auth.callback({
+      // Validate the callback
+      const isValid = await shopify.auth.validateAuthCallback({
         rawRequest: request,
       });
 
-      console.log("OAuth callback successful:", {
-        shop: callback.session.shop,
-        isOnline: callback.session.isOnline,
-      });
+      if (!isValid) {
+        throw new Error("Invalid OAuth callback");
+      }
+
+      // Get the session from the callback
+      const sessionId = shopify.session.getOfflineId(shop);
+      
+      // Create session manually since the callback validation passed
+      const session = {
+        id: sessionId,
+        shop,
+        state: state || "",
+        isOnline: false,
+        scope: process.env.SCOPES || "",
+        accessToken: "", // Will be filled by token exchange
+      };
+
+      // Exchange code for access token
+      const tokenResponse = await fetch(
+        `https://${shop}/admin/oauth/access_token`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            client_id: process.env.SHOPIFY_API_KEY,
+            client_secret: process.env.SHOPIFY_API_SECRET,
+            code,
+          }),
+        }
+      );
+
+      const tokenData = await tokenResponse.json();
+      
+      if (!tokenData.access_token) {
+        throw new Error("Failed to get access token");
+      }
+
+      console.log("Got access token, saving session");
 
       // Store the session in the database
       await prisma.session.upsert({
-        where: { id: callback.session.id },
+        where: { id: sessionId },
         update: {
-          shop: callback.session.shop,
-          state: callback.session.state,
-          isOnline: callback.session.isOnline,
-          scope: callback.session.scope,
-          expires: callback.session.expires,
-          accessToken: callback.session.accessToken,
-          userId: callback.session.onlineAccessInfo?.associated_user?.id 
-            ? BigInt(callback.session.onlineAccessInfo.associated_user.id)
-            : null,
+          shop,
+          state: state || "",
+          isOnline: false,
+          scope: tokenData.scope || process.env.SCOPES || "",
+          accessToken: tokenData.access_token,
         },
         create: {
-          id: callback.session.id,
-          shop: callback.session.shop,
-          state: callback.session.state,
-          isOnline: callback.session.isOnline,
-          scope: callback.session.scope,
-          expires: callback.session.expires,
-          accessToken: callback.session.accessToken,
-          userId: callback.session.onlineAccessInfo?.associated_user?.id 
-            ? BigInt(callback.session.onlineAccessInfo.associated_user.id)
-            : null,
+          id: sessionId,
+          shop,
+          state: state || "",
+          isOnline: false,
+          scope: tokenData.scope || process.env.SCOPES || "",
+          accessToken: tokenData.access_token,
         },
       });
 
@@ -92,15 +110,19 @@ export async function loader({ request }) {
   console.log("Starting OAuth flow");
 
   try {
-    const authRoute = await shopify.auth.begin({
-      shop,
-      callbackPath: "/auth/callback",
-      isOnline: false, // Use offline tokens for background operations
-      rawRequest: request,
-    });
+    // Build the OAuth URL manually
+    const scopes = process.env.SCOPES?.split(",").join(",") || "";
+    const redirectUri = `${process.env.SHOPIFY_APP_URL}/auth`;
+    const nonce = Math.random().toString(36).substring(7);
 
-    console.log("Redirecting to Shopify for OAuth");
-    return redirect(authRoute);
+    const authUrl = `https://${shop}/admin/oauth/authorize?` +
+      `client_id=${process.env.SHOPIFY_API_KEY}&` +
+      `scope=${scopes}&` +
+      `redirect_uri=${redirectUri}&` +
+      `state=${nonce}`;
+
+    console.log("Redirecting to:", authUrl);
+    return redirect(authUrl);
   } catch (error) {
     console.error("OAuth begin error:", error);
     throw new Response(`Auth error: ${error.message}`, { status: 500 });
