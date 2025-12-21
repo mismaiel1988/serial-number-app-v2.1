@@ -119,8 +119,9 @@ export default function AdditionalPage() {
           </p>
         </div>
         
-        <Form method="post">
-          <input type="hidden" name="action" value="sync" />
+     <Form method="post" action={`/additional?shop=${shop}`}>
+      <input type="hidden" name="action" value="sync" />
+
           <button
             type="submit"
             disabled={isLoading}
