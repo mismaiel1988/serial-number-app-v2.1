@@ -1,52 +1,49 @@
 import { redirect } from "react-router";
-import { shopify } from "../shopify.server";
 import prisma from "../db.server";
+import crypto from "crypto";
 
 /**
- * Shopify OAuth callback handler
- * Handles both the initial auth request and the callback
+ * Shopify OAuth handler
+ * Manually handles OAuth flow without relying on shopify-api auth helpers
  */
 
 export async function loader({ request }) {
   const url = new URL(request.url);
   const shop = url.searchParams.get("shop");
   const code = url.searchParams.get("code");
-  const host = url.searchParams.get("host");
   const hmac = url.searchParams.get("hmac");
-  const state = url.searchParams.get("state");
+  const host = url.searchParams.get("host");
 
-  console.log("Auth route called:", { shop, hasCode: !!code, host, hmac, state });
+  console.log("Auth route called:", { shop, hasCode: !!code, hasHmac: !!hmac });
 
   if (!shop) {
     throw new Response("Missing shop parameter", { status: 400 });
   }
 
-  // If we have a code and hmac, this is the callback from Shopify
-  if (code && hmac) {
-    console.log("Processing OAuth callback");
+  // If we have a code, this is the callback from Shopify
+  if (code) {
+    console.log("Processing OAuth callback for shop:", shop);
     
     try {
-      // Validate the callback
-      const isValid = await shopify.auth.validateAuthCallback({
-        rawRequest: request,
-      });
-
-      if (!isValid) {
-        throw new Error("Invalid OAuth callback");
+      // Verify HMAC
+      const params = Object.fromEntries(url.searchParams);
+      delete params.hmac;
+      
+      const message = Object.keys(params)
+        .sort()
+        .map(key => `${key}=${params[key]}`)
+        .join('&');
+      
+      const generatedHash = crypto
+        .createHmac('sha256', process.env.SHOPIFY_API_SECRET)
+        .update(message)
+        .digest('hex');
+      
+      if (generatedHash !== hmac) {
+        throw new Error("HMAC validation failed");
       }
 
-      // Get the session from the callback
-      const sessionId = shopify.session.getOfflineId(shop);
-      
-      // Create session manually since the callback validation passed
-      const session = {
-        id: sessionId,
-        shop,
-        state: state || "",
-        isOnline: false,
-        scope: process.env.SCOPES || "",
-        accessToken: "", // Will be filled by token exchange
-      };
+      console.log("HMAC validated successfully");
 
       // Exchange code for access token
       const tokenResponse = await fetch(
@@ -64,20 +61,27 @@ export async function loader({ request }) {
         }
       );
 
+      if (!tokenResponse.ok) {
+        throw new Error(`Token exchange failed: ${tokenResponse.statusText}`);
+      }
+
       const tokenData = await tokenResponse.json();
       
       if (!tokenData.access_token) {
-        throw new Error("Failed to get access token");
+        throw new Error("No access token in response");
       }
 
       console.log("Got access token, saving session");
+
+      // Create session ID
+      const sessionId = `offline_${shop}`;
 
       // Store the session in the database
       await prisma.session.upsert({
         where: { id: sessionId },
         update: {
           shop,
-          state: state || "",
+          state: "",
           isOnline: false,
           scope: tokenData.scope || process.env.SCOPES || "",
           accessToken: tokenData.access_token,
@@ -85,14 +89,14 @@ export async function loader({ request }) {
         create: {
           id: sessionId,
           shop,
-          state: state || "",
+          state: "",
           isOnline: false,
           scope: tokenData.scope || process.env.SCOPES || "",
           accessToken: tokenData.access_token,
         },
       });
 
-      console.log("Session saved to database");
+      console.log("Session saved successfully");
 
       // Redirect to the app
       const redirectUrl = host 
@@ -106,22 +110,21 @@ export async function loader({ request }) {
     }
   }
 
-  // No code - this is the initial auth request, start OAuth flow
-  console.log("Starting OAuth flow");
+  // No code - start OAuth flow
+  console.log("Starting OAuth flow for shop:", shop);
 
   try {
-    // Build the OAuth URL manually
-    const scopes = process.env.SCOPES?.split(",").join(",") || "";
+    const scopes = process.env.SCOPES || "read_products,write_products,read_orders";
     const redirectUri = `${process.env.SHOPIFY_APP_URL}/auth`;
-    const nonce = Math.random().toString(36).substring(7);
+    const nonce = crypto.randomBytes(16).toString('hex');
 
     const authUrl = `https://${shop}/admin/oauth/authorize?` +
       `client_id=${process.env.SHOPIFY_API_KEY}&` +
       `scope=${scopes}&` +
-      `redirect_uri=${redirectUri}&` +
+      `redirect_uri=${encodeURIComponent(redirectUri)}&` +
       `state=${nonce}`;
 
-    console.log("Redirecting to:", authUrl);
+    console.log("Redirecting to Shopify OAuth");
     return redirect(authUrl);
   } catch (error) {
     console.error("OAuth begin error:", error);
