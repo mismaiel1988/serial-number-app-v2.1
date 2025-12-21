@@ -1,7 +1,6 @@
 import { useLoaderData, Form, useNavigation, useActionData } from "react-router";
 import prisma from "../db.server";
 import { syncOrdersFromShopify } from "../services/orders.server";
-import { shopify } from "../shopify.server";
 
 /**
  * Loader: Fetch orders from database
