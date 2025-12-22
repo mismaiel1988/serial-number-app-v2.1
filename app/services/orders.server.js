@@ -11,20 +11,14 @@ import prisma from "../db.server";
  * Determines if a line item is a saddle product
  */
 function isSaddleProduct(lineItem) {
-  const productType = lineItem.product?.productType?.toLowerCase() || "";
   const tags = lineItem.product?.tags || [];
-  const sku = lineItem.sku?.toLowerCase() || "";
   
-  // Check for "saddles" tag (case-insensitive)
-  const hasSaddleTag = tags.some(tag => tag.toLowerCase() === "saddles" || tag.toLowerCase().includes("saddle"));
+  // Check for EXACT "saddles" tag only (case-insensitive)
+  const hasSaddleTag = tags.some(tag => tag.toLowerCase() === "saddles");
   
-  return (
-    productType.includes("saddle") ||
-    hasSaddleTag ||
-    sku.startsWith("saddle-") ||
-    sku.includes("-saddle-")
-  );
+  return hasSaddleTag;
 }
+
 
 /**
  * Sync orders from Shopify to local database
@@ -250,3 +244,4 @@ export async function syncOrdersFromShopify(session, options = {}) {
     };
   }
 }
+
