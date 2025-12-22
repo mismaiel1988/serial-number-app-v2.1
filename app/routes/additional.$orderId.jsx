@@ -1,17 +1,27 @@
 import { useLoaderData, Form, useNavigation, useActionData, Link } from "react-router";
 import prisma from "../db.server";
+import { saveSerialNumbers } from "../services/serials.server";
 
+/**
+ * Loader: Fetch order by DATABASE ID (integer)
+ */
 export async function loader({ params }) {
   const { orderId } = params;
   
+  // Validate that orderId is a valid integer
+  const orderIdInt = parseInt(orderId, 10);
+  if (isNaN(orderIdInt)) {
+    throw new Response("Invalid order ID", { status: 400 });
+  }
+  
   const order = await prisma.order.findUnique({
-    where: { id: parseInt(orderId) },
+    where: { id: orderIdInt },
     include: {
       lineItems: {
         where: { isSaddle: true },
         include: {
           serialNumbers: {
-            orderBy: { enteredAt: "asc" }
+            orderBy: { unitIndex: "asc" }
           }
         }
       }
@@ -25,6 +35,9 @@ export async function loader({ params }) {
   return { order };
 }
 
+/**
+ * Action: Save serial numbers with validation
+ */
 export async function action({ request, params }) {
   const { orderId } = params;
   const formData = await request.formData();
@@ -34,50 +47,53 @@ export async function action({ request, params }) {
     try {
       const lineItemIds = formData.getAll("lineItemId");
       
+      // Collect all serials by line item
+      const serialsByLineItem = {};
       for (const lineItemId of lineItemIds) {
         const serials = formData.getAll(`serials_${lineItemId}`);
-        
-        // Delete existing serials for this line item
-        await prisma.serialNumber.deleteMany({
-          where: { lineItemId: parseInt(lineItemId) }
-        });
-        
-        // Create new serial numbers with unitIndex
-        for (let i = 0; i < serials.length; i++) {
-          const serial = serials[i];
-          if (serial && serial.trim()) {
-            await prisma.serialNumber.create({
-              data: {
-                lineItemId: parseInt(lineItemId),
-                serialNumber: serial.trim(),
-                unitIndex: i + 1,
-                enteredAt: new Date()
-              }
-            });
-          }
-        }
+        serialsByLineItem[lineItemId] = serials;
+      }
+      
+      // Validate and save each line item's serials
+      for (const [lineItemId, serials] of Object.entries(serialsByLineItem)) {
+        await saveSerialNumbers(parseInt(lineItemId, 10), serials);
       }
 
-      return { success: true, message: "Serial numbers saved successfully" };
+      return { 
+        success: true, 
+        message: "Serial numbers saved successfully" 
+      };
     } catch (error) {
       console.error("Error saving serials:", error);
-      return { success: false, error: error.message };
+      return { 
+        success: false, 
+        error: error.message 
+      };
     }
   }
 
   return { success: false, error: "Unknown action" };
 }
 
+/**
+ * Component: Order detail page with serial entry
+ */
 export default function OrderDetailPage() {
   const { order } = useLoaderData();
   const actionData = useActionData();
   const navigation = useNavigation();
   const isLoading = navigation.state === "submitting";
 
+  // Check if all serials are entered
+  const allSerialsEntered = order.lineItems.every(item => {
+    const enteredCount = item.serialNumbers.filter(s => s.serialNumber).length;
+    return enteredCount === item.quantity;
+  });
+
   return (
     <div style={{ padding: "20px", maxWidth: "1200px", margin: "0 auto" }}>
       <div style={{ marginBottom: "20px" }}>
-        <Link to="/additional" style={{ color: "#008060", textDecoration: "none" }}>
+        <Link to="/additional" style={{ color: "#008060", textDecoration: "none", fontSize: "14px" }}>
           ← Back to Orders
         </Link>
       </div>
@@ -100,7 +116,7 @@ export default function OrderDetailPage() {
           {actionData.success ? (
             <p style={{ margin: 0 }}>✅ {actionData.message}</p>
           ) : (
-            <p style={{ margin: 0 }}>❌ Error: {actionData.error}</p>
+            <p style={{ margin: 0 }}>❌ {actionData.error}</p>
           )}
         </div>
       )}
@@ -108,69 +124,99 @@ export default function OrderDetailPage() {
       <Form method="post">
         <input type="hidden" name="action" value="save_serials" />
         
-        {order.lineItems.map((lineItem) => (
-          <div key={lineItem.id} style={{
-            backgroundColor: "white",
-            border: "1px solid #e1e3e5",
-            borderRadius: "8px",
-            padding: "20px",
-            marginBottom: "20px"
-          }}>
-            <input type="hidden" name="lineItemId" value={lineItem.id} />
-            
-            <h3 style={{ margin: "0 0 10px 0" }}>
-              {lineItem.productTitle}
-              {lineItem.variantTitle && ` - ${lineItem.variantTitle}`}
-            </h3>
-            
-            <p style={{ color: "#666", margin: "0 0 15px 0" }}>
-              SKU: {lineItem.sku} • Quantity: {lineItem.quantity}
-            </p>
+        {order.lineItems.map((lineItem) => {
+          const serialsEntered = lineItem.serialNumbers.filter(s => s.serialNumber).length;
+          const isComplete = serialsEntered === lineItem.quantity;
+          
+          return (
+            <div key={lineItem.id} style={{
+              backgroundColor: "white",
+              border: `2px solid ${isComplete ? "#008060" : "#e1e3e5"}`,
+              borderRadius: "8px",
+              padding: "20px",
+              marginBottom: "20px"
+            }}>
+              <input type="hidden" name="lineItemId" value={lineItem.id} />
+              
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "start", marginBottom: "10px" }}>
+                <h3 style={{ margin: 0 }}>
+                  {lineItem.productTitle}
+                  {lineItem.variantTitle && ` - ${lineItem.variantTitle}`}
+                </h3>
+                {isComplete && (
+                  <span style={{ 
+                    color: "#008060", 
+                    fontSize: "14px", 
+                    fontWeight: "600" 
+                  }}>
+                    ✓ Complete
+                  </span>
+                )}
+              </div>
+              
+              <p style={{ color: "#666", margin: "0 0 15px 0" }}>
+                SKU: {lineItem.sku} • Quantity: {lineItem.quantity} • Entered: {serialsEntered}/{lineItem.quantity}
+              </p>
 
-            <div style={{ display: "grid", gap: "10px" }}>
-              {Array.from({ length: lineItem.quantity }).map((_, index) => {
-                const existingSerial = lineItem.serialNumbers.find(s => s.unitIndex === index + 1)?.serialNumber || "";
-                return (
-                  <div key={index}>
-                    <label style={{ display: "block", marginBottom: "5px", fontWeight: "500" }}>
-                      Serial Number {index + 1}:
-                    </label>
-                    <input
-                      type="text"
-                      name={`serials_${lineItem.id}`}
-                      defaultValue={existingSerial}
-                      placeholder="Enter serial number"
-                      style={{
-                        width: "100%",
-                        padding: "8px 12px",
-                        border: "1px solid #c9cccf",
-                        borderRadius: "4px",
-                        fontSize: "14px"
-                      }}
-                    />
-                  </div>
-                );
-              })}
+              <div style={{ display: "grid", gap: "10px" }}>
+                {Array.from({ length: lineItem.quantity }).map((_, index) => {
+                  const existingSerial = lineItem.serialNumbers.find(s => s.unitIndex === index + 1);
+                  return (
+                    <div key={index}>
+                      <label style={{ display: "block", marginBottom: "5px", fontWeight: "500" }}>
+                        Serial Number {index + 1}:
+                        <span style={{ color: "#bf0711", marginLeft: "4px" }}>*</span>
+                      </label>
+                      <input
+                        type="text"
+                        name={`serials_${lineItem.id}`}
+                        defaultValue={existingSerial?.serialNumber || ""}
+                        placeholder="Enter serial number"
+                        required
+                        style={{
+                          width: "100%",
+                          padding: "8px 12px",
+                          border: "1px solid #c9cccf",
+                          borderRadius: "4px",
+                          fontSize: "14px"
+                        }}
+                      />
+                    </div>
+                  );
+                })}
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
 
-        <button
-          type="submit"
-          disabled={isLoading}
-          style={{
-            padding: "12px 24px",
-            backgroundColor: isLoading ? "#ccc" : "#008060",
-            color: "white",
-            border: "none",
-            borderRadius: "4px",
-            cursor: isLoading ? "not-allowed" : "pointer",
-            fontSize: "16px",
-            fontWeight: "600"
-          }}
-        >
-          {isLoading ? "Saving..." : "Save Serial Numbers"}
-        </button>
+        <div style={{ 
+          display: "flex", 
+          gap: "12px", 
+          alignItems: "center" 
+        }}>
+          <button
+            type="submit"
+            disabled={isLoading}
+            style={{
+              padding: "12px 24px",
+              backgroundColor: isLoading ? "#ccc" : "#008060",
+              color: "white",
+              border: "none",
+              borderRadius: "4px",
+              cursor: isLoading ? "not-allowed" : "pointer",
+              fontSize: "16px",
+              fontWeight: "600"
+            }}
+          >
+            {isLoading ? "Saving..." : "Save Serial Numbers"}
+          </button>
+          
+          {!allSerialsEntered && (
+            <span style={{ color: "#bf0711", fontSize: "14px" }}>
+              * All serial numbers must be entered
+            </span>
+          )}
+        </div>
       </Form>
     </div>
   );
