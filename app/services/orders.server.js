@@ -9,17 +9,18 @@ import prisma from "../db.server";
 
 /**
  * Determines if a line item is a saddle product
- * Customize this logic based on your product identification strategy
  */
 function isSaddleProduct(lineItem) {
   const productType = lineItem.product?.productType?.toLowerCase() || "";
   const tags = lineItem.product?.tags || [];
   const sku = lineItem.sku?.toLowerCase() || "";
   
-  // Customize these rules based on how you identify saddles
+  // Check for "saddles" tag (case-insensitive)
+  const hasSaddleTag = tags.some(tag => tag.toLowerCase() === "saddles" || tag.toLowerCase().includes("saddle"));
+  
   return (
     productType.includes("saddle") ||
-    tags.some(tag => tag.toLowerCase().includes("saddle")) ||
+    hasSaddleTag ||
     sku.startsWith("saddle-") ||
     sku.includes("-saddle-")
   );
@@ -27,9 +28,6 @@ function isSaddleProduct(lineItem) {
 
 /**
  * Sync orders from Shopify to local database
- * @param {string} session - Shopify session with shop and accessToken
- * @param {object} options - Sync options
- * @returns {object} - Sync results
  */
 export async function syncOrdersFromShopify(session, options = {}) {
   const {
@@ -38,8 +36,13 @@ export async function syncOrdersFromShopify(session, options = {}) {
     sinceDate = null
   } = options;
 
+  console.log("=== SYNC STARTED ===");
+  console.log("Session:", { shop: session.shop, hasAccessToken: !!session.accessToken });
+  console.log("Options:", { limit, onlySaddleOrders });
+
   try {
     const client = new shopify.clients.Graphql({ session });
+    console.log("GraphQL client created successfully");
     
     let hasNextPage = true;
     let cursor = null;
@@ -48,6 +51,8 @@ export async function syncOrdersFromShopify(session, options = {}) {
     let saddleLineItems = 0;
 
     while (hasNextPage) {
+      console.log(`Fetching orders batch (cursor: ${cursor || 'initial'})`);
+      
       // Fetch orders from Shopify
       const response = await client.query({
         data: `
@@ -113,7 +118,10 @@ export async function syncOrdersFromShopify(session, options = {}) {
         }
       });
 
+      console.log("GraphQL response received");
+
       const orders = response.body.data.orders.edges;
+      console.log(`Fetched ${orders.length} orders`);
       
       // Process each order
       for (const { node: order } of orders) {
@@ -123,8 +131,11 @@ export async function syncOrdersFromShopify(session, options = {}) {
         const hasSaddles = lineItems.some(isSaddleProduct);
         
         if (onlySaddleOrders && !hasSaddles) {
-          continue; // Skip orders without saddles
+          console.log(`Skipping order ${order.name} - no saddles`);
+          continue;
         }
+
+        console.log(`Processing order ${order.name} with ${lineItems.length} line items`);
 
         // Upsert order
         const dbOrder = await prisma.order.upsert({
@@ -163,6 +174,7 @@ export async function syncOrdersFromShopify(session, options = {}) {
         });
 
         totalOrders++;
+        console.log(`Order ${order.name} saved to database`);
 
         // Upsert line items
         for (const lineItem of lineItems) {
@@ -197,14 +209,24 @@ export async function syncOrdersFromShopify(session, options = {}) {
           });
 
           totalLineItems++;
-          if (isSaddle) saddleLineItems++;
+          if (isSaddle) {
+            saddleLineItems++;
+            console.log(`  - Saddle line item: ${lineItem.title} (qty: ${lineItem.quantity})`);
+          }
         }
       }
 
       // Check for next page
       hasNextPage = response.body.data.orders.pageInfo.hasNextPage;
       cursor = response.body.data.orders.pageInfo.endCursor;
+      
+      console.log(`Batch complete. hasNextPage: ${hasNextPage}`);
     }
+
+    console.log("=== SYNC COMPLETE ===");
+    console.log(`Total orders: ${totalOrders}`);
+    console.log(`Total line items: ${totalLineItems}`);
+    console.log(`Saddle line items: ${saddleLineItems}`);
 
     return {
       success: true,
@@ -214,7 +236,9 @@ export async function syncOrdersFromShopify(session, options = {}) {
     };
 
   } catch (error) {
-    console.error("Order sync error:", error);
+    console.error("=== SYNC ERROR ===");
+    console.error("Error message:", error.message);
+    console.error("Error stack:", error.stack);
     return {
       success: false,
       error: error.message
