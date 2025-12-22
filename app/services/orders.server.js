@@ -53,56 +53,55 @@ export async function syncOrdersFromShopify(session, options = {}) {
     while (hasNextPage) {
       console.log(`Fetching orders batch (cursor: ${cursor || 'initial'})`);
       
-      const response = await client.query({
-  data: {
-    query: `
-      query GetOrders($limit: Int!, $cursor: String) {
-        orders(first: $limit, after: $cursor, sortKey: CREATED_AT, reverse: true) {
-          pageInfo {
-            hasNextPage
-            endCursor
-          }
-          edges {
-            node {
-              id
-              name
-              createdAt
-              updatedAt
-              displayFulfillmentStatus
-              displayFinancialStatus
-              customer {
-                displayName
-                email
-                phone
-              }
-              totalPriceSet {
-                shopMoney {
-                  amount
-                  currencyCode
+      const query = `
+        query GetOrders($limit: Int!, $cursor: String) {
+          orders(first: $limit, after: $cursor, sortKey: CREATED_AT, reverse: true) {
+            pageInfo {
+              hasNextPage
+              endCursor
+            }
+            edges {
+              node {
+                id
+                name
+                createdAt
+                updatedAt
+                displayFulfillmentStatus
+                displayFinancialStatus
+                customer {
+                  displayName
+                  email
+                  phone
                 }
-              }
-              tags
-              note
-              lineItems(first: 100) {
-                edges {
-                  node {
-                    id
-                    title
-                    variantTitle
-                    sku
-                    quantity
-                    originalUnitPriceSet {
-                      shopMoney {
-                        amount
+                totalPriceSet {
+                  shopMoney {
+                    amount
+                    currencyCode
+                  }
+                }
+                tags
+                note
+                lineItems(first: 100) {
+                  edges {
+                    node {
+                      id
+                      title
+                      variantTitle
+                      sku
+                      quantity
+                      originalUnitPriceSet {
+                        shopMoney {
+                          amount
+                        }
                       }
-                    }
-                    product {
-                      id
-                      productType
-                      tags
-                    }
-                    variant {
-                      id
+                      product {
+                        id
+                        productType
+                        tags
+                      }
+                      variant {
+                        id
+                      }
                     }
                   }
                 }
@@ -110,19 +109,22 @@ export async function syncOrdersFromShopify(session, options = {}) {
             }
           }
         }
-      }
-    `,
-    variables: {
-      limit,
-      cursor
-    }
-  }
-});
+      `;
 
+      console.log("Executing GraphQL query...");
+      
+      // Fetch orders from Shopify
+      const response = await client.request(query, {
+        variables: {
+          limit,
+          cursor
+        }
+      });
 
       console.log("GraphQL response received");
+      console.log("Response data:", JSON.stringify(response.data, null, 2));
 
-      const orders = response.body.data.orders.edges;
+      const orders = response.data.orders.edges;
       console.log(`Fetched ${orders.length} orders`);
       
       // Process each order
@@ -219,8 +221,8 @@ export async function syncOrdersFromShopify(session, options = {}) {
       }
 
       // Check for next page
-      hasNextPage = response.body.data.orders.pageInfo.hasNextPage;
-      cursor = response.body.data.orders.pageInfo.endCursor;
+      hasNextPage = response.data.orders.pageInfo.hasNextPage;
+      cursor = response.data.orders.pageInfo.endCursor;
       
       console.log(`Batch complete. hasNextPage: ${hasNextPage}`);
     }
@@ -241,10 +243,10 @@ export async function syncOrdersFromShopify(session, options = {}) {
     console.error("=== SYNC ERROR ===");
     console.error("Error message:", error.message);
     console.error("Error stack:", error.stack);
+    console.error("Full error:", JSON.stringify(error, null, 2));
     return {
       success: false,
       error: error.message
     };
   }
 }
-
