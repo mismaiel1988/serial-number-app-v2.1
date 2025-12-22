@@ -53,70 +53,72 @@ export async function syncOrdersFromShopify(session, options = {}) {
     while (hasNextPage) {
       console.log(`Fetching orders batch (cursor: ${cursor || 'initial'})`);
       
-      // Fetch orders from Shopify
       const response = await client.query({
-        data: `
-          query GetOrders($limit: Int!, $cursor: String) {
-            orders(first: $limit, after: $cursor, sortKey: CREATED_AT, reverse: true) {
-              pageInfo {
-                hasNextPage
-                endCursor
+  data: {
+    query: `
+      query GetOrders($limit: Int!, $cursor: String) {
+        orders(first: $limit, after: $cursor, sortKey: CREATED_AT, reverse: true) {
+          pageInfo {
+            hasNextPage
+            endCursor
+          }
+          edges {
+            node {
+              id
+              name
+              createdAt
+              updatedAt
+              displayFulfillmentStatus
+              displayFinancialStatus
+              customer {
+                displayName
+                email
+                phone
               }
-              edges {
-                node {
-                  id
-                  name
-                  createdAt
-                  updatedAt
-                  displayFulfillmentStatus
-                  displayFinancialStatus
-                  customer {
-                    displayName
-                    email
-                    phone
-                  }
-                  totalPriceSet {
-                    shopMoney {
-                      amount
-                      currencyCode
-                    }
-                  }
-                  tags
-                  note
-                  lineItems(first: 100) {
-                    edges {
-                      node {
-                        id
-                        title
-                        variantTitle
-                        sku
-                        quantity
-                        originalUnitPriceSet {
-                          shopMoney {
-                            amount
-                          }
-                        }
-                        product {
-                          id
-                          productType
-                          tags
-                        }
-                        variant {
-                          id
-                        }
+              totalPriceSet {
+                shopMoney {
+                  amount
+                  currencyCode
+                }
+              }
+              tags
+              note
+              lineItems(first: 100) {
+                edges {
+                  node {
+                    id
+                    title
+                    variantTitle
+                    sku
+                    quantity
+                    originalUnitPriceSet {
+                      shopMoney {
+                        amount
                       }
+                    }
+                    product {
+                      id
+                      productType
+                      tags
+                    }
+                    variant {
+                      id
                     }
                   }
                 }
               }
             }
           }
-        `,
-        variables: {
-          limit,
-          cursor
         }
-      });
+      }
+    `,
+    variables: {
+      limit,
+      cursor
+    }
+  }
+});
+
 
       console.log("GraphQL response received");
 
@@ -245,3 +247,4 @@ export async function syncOrdersFromShopify(session, options = {}) {
     };
   }
 }
+
