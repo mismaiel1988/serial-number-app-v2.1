@@ -208,10 +208,12 @@ export default function AdditionalPage() {
                 <tr key={order.id} style={{ borderBottom: "1px solid #e1e3e5" }}>
                   <td style={{ padding: "12px" }}>
                     <Link 
-                      to={`/order/${order.id}?shop=${shop}`}
-                      style={{ color: "#008060", textDecoration: "none", fontWeight: "600" }}>
+                      to={`/additional/${order.id}?shop=${shop}`}
+                      style={{ color: "#008060", textDecoration: "none", fontWeight: "600" }}
+                    >
                       {order.orderName}
                     </Link>
+
 
                     <div style={{ fontSize: "12px", color: "#666" }}>
                       {new Date(order.createdAt).toLocaleDateString()}
