@@ -14,7 +14,7 @@ export async function loader({ params }) {
         where: { isSaddle: true },
         include: {
           serialNumbers: {
-            orderBy: { createdAt: "asc" }
+            orderBy: { enteredAt: "asc" }
           }
         }
       }
