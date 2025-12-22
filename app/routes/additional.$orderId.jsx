@@ -1,9 +1,6 @@
 import { useLoaderData, Form, useNavigation, useActionData, Link } from "react-router";
 import prisma from "../db.server";
 
-/**
- * Loader: Fetch order details with line items and serial numbers
- */
 export async function loader({ params }) {
   const { orderId } = params;
   
@@ -28,9 +25,6 @@ export async function loader({ params }) {
   return { order };
 }
 
-/**
- * Action: Save serial numbers
- */
 export async function action({ request, params }) {
   const { orderId } = params;
   const formData = await request.formData();
@@ -38,7 +32,6 @@ export async function action({ request, params }) {
 
   if (action === "save_serials") {
     try {
-      // Get all serial number entries from form
       const lineItemIds = formData.getAll("lineItemId");
       
       for (const lineItemId of lineItemIds) {
@@ -49,13 +42,15 @@ export async function action({ request, params }) {
           where: { lineItemId: parseInt(lineItemId) }
         });
         
-        // Create new serial numbers
-        for (const serial of serials) {
+        // Create new serial numbers with unitIndex
+        for (let i = 0; i < serials.length; i++) {
+          const serial = serials[i];
           if (serial && serial.trim()) {
             await prisma.serialNumber.create({
               data: {
                 lineItemId: parseInt(lineItemId),
                 serialNumber: serial.trim(),
+                unitIndex: i + 1,
                 enteredAt: new Date()
               }
             });
@@ -73,9 +68,6 @@ export async function action({ request, params }) {
   return { success: false, error: "Unknown action" };
 }
 
-/**
- * Component: Order detail page with serial number entry
- */
 export default function OrderDetailPage() {
   const { order } = useLoaderData();
   const actionData = useActionData();
@@ -137,7 +129,7 @@ export default function OrderDetailPage() {
 
             <div style={{ display: "grid", gap: "10px" }}>
               {Array.from({ length: lineItem.quantity }).map((_, index) => {
-                const existingSerial = lineItem.serialNumbers[index]?.serialNumber || "";
+                const existingSerial = lineItem.serialNumbers.find(s => s.unitIndex === index + 1)?.serialNumber || "";
                 return (
                   <div key={index}>
                     <label style={{ display: "block", marginBottom: "5px", fontWeight: "500" }}>
