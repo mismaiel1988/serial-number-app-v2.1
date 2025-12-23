@@ -1,6 +1,7 @@
 import { useLoaderData, Form, useNavigation, useActionData, Link } from "react-router";
-import prisma from "../db.server";
-import { saveSerialNumbers } from "../services/serials.server";
+import prisma from "../../db.server";
+import { saveSerialNumbers } from "../../services/serials.server";
+
 
 /**
  * Loader: Fetch order by DATABASE ID (integer)
