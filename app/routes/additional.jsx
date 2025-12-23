@@ -213,8 +213,6 @@ export default function AdditionalPage() {
                     >
                       {order.orderName}
                     </Link>
-
-
                     <div style={{ fontSize: "12px", color: "#666" }}>
                       {new Date(order.createdAt).toLocaleDateString()}
                     </div>
@@ -232,11 +230,42 @@ export default function AdditionalPage() {
                   </td>
                   <td style={{ padding: "12px" }}>
                     {order.lineItems.map((item) => {
-                      const serialCount = item.serialNumbers.length;
-                      const needed = item.quantity;
+                      const serials = item.serialNumbers
+                        .sort((a, b) => a.unitIndex - b.unitIndex)
+                        .map(s => s.serialNumber)
+                        .filter(s => s);
+                      
+                      if (serials.length === 0) {
+                        return (
+                          <div key={item.id} style={{ marginBottom: "4px", color: "#bf0711" }}>
+                            0/{item.quantity} entered
+                          </div>
+                        );
+                      }
+                      
+                      if (serials.length === item.quantity) {
+                        return (
+                          <div key={item.id} style={{ marginBottom: "8px" }}>
+                            <div style={{ fontSize: "12px", color: "#008060", fontWeight: "600", marginBottom: "2px" }}>
+                              ✓ Complete
+                            </div>
+                            {serials.map((serial, idx) => (
+                              <div key={idx} style={{ fontSize: "12px", color: "#666", fontFamily: "monospace" }}>
+                                {serial}
+                              </div>
+                            ))}
+                          </div>
+                        );
+                      }
+                      
                       return (
-                        <div key={item.id} style={{ marginBottom: "4px" }}>
-                          {serialCount}/{needed} entered
+                        <div key={item.id} style={{ marginBottom: "4px", color: "#b98900" }}>
+                          {serials.length}/{item.quantity} entered
+                          {serials.map((serial, idx) => (
+                            <div key={idx} style={{ fontSize: "12px", color: "#666", fontFamily: "monospace" }}>
+                              {serial}
+                            </div>
+                          ))}
                         </div>
                       );
                     })}
