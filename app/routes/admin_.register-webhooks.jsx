@@ -1,8 +1,29 @@
-import { authenticate } from "../shopify.server";
+import shopify from "../shopify.server.js";
 
 export async function loader({ request }) {
   try {
-    const { admin } = await authenticate.admin(request);
+    const url = new URL(request.url);
+    const shop = url.searchParams.get("shop") || url.searchParams.get("embedded");
+    
+    if (!shop) {
+      return new Response(JSON.stringify({ error: "Missing shop parameter" }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" }
+      });
+    }
+    
+    // Get session
+    const sessionId = shopify.session.getOfflineId(shop);
+    const session = await shopify.config.sessionStorage.loadSession(sessionId);
+    
+    if (!session) {
+      return new Response(JSON.stringify({ error: "No session found" }), {
+        status: 401,
+        headers: { "Content-Type": "application/json" }
+      });
+    }
+    
+    const client = new shopify.clients.Graphql({ session });
     
     const appUrl = process.env.SHOPIFY_APP_URL || "https://serial-number-app-v2.onrender.com";
     
@@ -16,7 +37,7 @@ export async function loader({ request }) {
     
     for (const webhook of webhooks) {
       try {
-        const response = await admin.graphql(`
+        const response = await client.request(`
           mutation {
             webhookSubscriptionCreate(
               topic: ${webhook.topic}
@@ -43,10 +64,9 @@ export async function loader({ request }) {
           }
         `);
         
-        const data = await response.json();
         results.push({
           topic: webhook.topic,
-          result: data.data.webhookSubscriptionCreate
+          result: response.data.webhookSubscriptionCreate
         });
       } catch (error) {
         results.push({
@@ -60,7 +80,7 @@ export async function loader({ request }) {
       headers: { "Content-Type": "application/json" }
     });
   } catch (error) {
-    return new Response(JSON.stringify({ error: error.message }), {
+    return new Response(JSON.stringify({ error: error.message, stack: error.stack }), {
       status: 500,
       headers: { "Content-Type": "application/json" }
     });
