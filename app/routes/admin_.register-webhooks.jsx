@@ -13,18 +13,41 @@ export async function loader({ request }) {
       });
     }
     
-    // Get offline session
-    const sessionId = shopify.session.getOfflineId(shop);
+    console.log("Looking for session for shop:", shop);
+    
+    // Match the session ID format from auth.$.jsx
+    const sessionId = `offline_${shop}`;
+    console.log("Session ID:", sessionId);
+    
     const session = await prisma.session.findUnique({
       where: { id: sessionId }
     });
     
     if (!session) {
-      return new Response(JSON.stringify({ error: "No session found for shop: " + shop }), {
+      // Try to find ANY session for debugging
+      const allSessions = await prisma.session.findMany({
+        where: { shop: shop }
+      });
+      
+      console.log("No session found with ID:", sessionId);
+      console.log("All sessions for shop:", allSessions.map(s => ({ id: s.id, hasToken: !!s.accessToken })));
+      
+      return new Response(JSON.stringify({ 
+        error: "No session found for shop: " + shop,
+        sessionId: sessionId,
+        foundSessions: allSessions.map(s => s.id)
+      }), {
         status: 401,
         headers: { "Content-Type": "application/json" }
       });
     }
+    
+    console.log("Session found:", {
+      id: session.id,
+      shop: session.shop,
+      hasToken: !!session.accessToken,
+      tokenPrefix: session.accessToken?.substring(0, 10)
+    });
     
     const appUrl = process.env.SHOPIFY_APP_URL || "https://serial-number-app-v2.onrender.com";
     
