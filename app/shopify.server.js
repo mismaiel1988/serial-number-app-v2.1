@@ -20,17 +20,31 @@ export const shopify = shopifyApi({
   isCustomStoreApp: false,
   sessionStorage: {
     async storeSession(session) {
+      console.log("💾 Storing session:", {
+        id: session.id,
+        shop: session.shop,
+        hasToken: !!session.accessToken,
+        tokenPrefix: session.accessToken?.substring(0, 10),
+        isOnline: session.isOnline,
+      });
+      
       await prisma.session.upsert({
         where: { id: session.id },
         update: session,
         create: session
       });
+      
+      console.log("✅ Session stored successfully");
       return true;
     },
     async loadSession(id) {
-      return prisma.session.findUnique({ where: { id } });
+      console.log("📖 Loading session:", id);
+      const session = await prisma.session.findUnique({ where: { id } });
+      console.log("Session loaded:", session ? "✅ Found" : "❌ Not found");
+      return session;
     },
     async deleteSession(id) {
+      console.log("🗑️ Deleting session:", id);
       await prisma.session.delete({ where: { id } });
       return true;
     }
@@ -47,7 +61,7 @@ export const addDocumentResponseHeaders = (request, headers) => {
   return headers;
 };
 
-// Login helper
+// Login helper - starts OAuth flow
 export const login = async (request) => {
   const url = new URL(request.url);
   const shop = url.searchParams.get("shop");
@@ -55,6 +69,8 @@ export const login = async (request) => {
   if (!shop) {
     throw new Error("Missing shop parameter");
   }
+  
+  console.log("🔄 Starting OAuth flow for shop:", shop);
   
   return await shopify.auth.begin({
     shop,
