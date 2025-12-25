@@ -97,13 +97,13 @@ export const login = async (request) => {
 
     console.log("✅ Session verified in database");
 
-    // Return redirect response
-    return {
+    // Return proper Response object for React Router v7
+    return new Response(null, {
       status: 302,
       headers: {
         Location: `/?shop=${session.shop}&host=${Buffer.from(`${session.shop}/admin`).toString('base64')}`
       }
-    };
+    });
   }
   
   // Start OAuth flow
