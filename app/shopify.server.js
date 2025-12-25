@@ -67,6 +67,14 @@ export const login = async (request) => {
   const shop = url.searchParams.get("shop");
   const code = url.searchParams.get("code");
   
+  // DEBUG: Log what we're receiving
+  console.log("========================================");
+  console.log("LOGIN FUNCTION CALLED");
+  console.log("Full URL:", url.toString());
+  console.log("Shop parameter:", shop);
+  console.log("Code parameter:", code ? "Present" : "Not present");
+  console.log("========================================");
+  
   // If there's a code, this is the OAuth callback
   if (code) {
     console.log("🔄 OAuth callback triggered (via login route)");
@@ -97,13 +105,8 @@ export const login = async (request) => {
 
     console.log("✅ Session verified in database");
 
-    // Return proper Response object for React Router v7
-    return new Response(null, {
-      status: 302,
-      headers: {
-        Location: `/?shop=${session.shop}&host=${Buffer.from(`${session.shop}/admin`).toString('base64')}`
-      }
-    });
+    // Return redirect URL as string (the route will handle the redirect)
+    return `/?shop=${session.shop}&host=${Buffer.from(`${session.shop}/admin`).toString('base64')}`;
   }
   
   // Start OAuth flow
@@ -113,12 +116,21 @@ export const login = async (request) => {
   
   console.log("🔄 Starting OAuth flow for shop:", shop);
   
-  return await shopify.auth.begin({
-    shop,
-    callbackPath: "/auth/login", // Points back to this same route
-    isOnline: false,
-    rawRequest: request
+  // Build the OAuth URL manually (bypasses incompatible shopify.auth.begin)
+  const authQuery = new URLSearchParams({
+    client_id: process.env.SHOPIFY_API_KEY,
+    scope: process.env.SCOPES || "read_orders,write_orders,read_products",
+    redirect_uri: `${process.env.SHOPIFY_APP_URL}/auth/login`,
+    state: Math.random().toString(36).substring(7),
+    grant_options: "[]"
   });
+  
+  const authUrl = `https://${shop}/admin/oauth/authorize?${authQuery.toString()}`;
+  
+  console.log("OAuth URL built:", authUrl);
+  
+  // Return the OAuth URL (the route will handle the redirect)
+  return authUrl;
 };
 
 export default shopify;
