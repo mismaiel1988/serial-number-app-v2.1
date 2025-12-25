@@ -119,7 +119,7 @@ export const login = async (request) => {
   // Build the OAuth URL manually (bypasses incompatible shopify.auth.begin)
   const authQuery = new URLSearchParams({
     client_id: process.env.SHOPIFY_API_KEY,
-    scope: process.env.SCOPES || "read_orders,write_orders,read_products",
+    scope: process.env.SCOPES || "read_app_proxy,write_app_proxy,read_assigned_fulfillment_orders,write_assigned_fulfillment_orders,read_customers,read_draft_orders,read_fulfillments,read_merchant_managed_fulfillment_orders,write_merchant_managed_fulfillment_orders,read_metaobject_definitions,write_metaobject_definitions,read_metaobjects,write_metaobjects,write_order_edits,read_order_edits,read_orders,write_orders,read_products",
     redirect_uri: `${process.env.SHOPIFY_APP_URL}/auth/login`,
     state: Math.random().toString(36).substring(7),
     grant_options: "[]"
