@@ -114,7 +114,7 @@ export async function loader({ request }) {
   console.log("Starting OAuth flow for shop:", shop);
 
   try {
-    const scopes = process.env.SCOPES || "read_products,write_products,read_orders";
+    const scopes = process.env.SCOPES || "read_app_proxy,write_app_proxy,read_assigned_fulfillment_orders,write_assigned_fulfillment_orders,read_customers,read_draft_orders,read_fulfillments,read_merchant_managed_fulfillment_orders,write_merchant_managed_fulfillment_orders,read_metaobject_definitions,write_metaobject_definitions,read_metaobjects,write_metaobjects,write_order_edits,read_order_edits,read_orders,write_orders,read_products";
     const redirectUri = `${process.env.SHOPIFY_APP_URL}/auth`;
     const nonce = crypto.randomBytes(16).toString('hex');
 
