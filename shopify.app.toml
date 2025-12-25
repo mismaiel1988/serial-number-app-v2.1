@@ -9,6 +9,7 @@ scopes = "read_orders, write_orders, read_draft_orders, read_customers, write_ap
 [auth]
 redirect_urls = [
   "https://serial-number-app-v2.onrender.com/auth/callback",
+  "https://serial-number-app-v2.onrender.com/auth/login",
   "https://serial-number-app-v2.onrender.com/auth/shopify/callback",
   "https://serial-number-app-v2.onrender.com/api/auth/callback"
 ]
