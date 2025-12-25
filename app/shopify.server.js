@@ -61,11 +61,52 @@ export const addDocumentResponseHeaders = (request, headers) => {
   return headers;
 };
 
-// Login helper - starts OAuth flow
+// Login helper - handles both OAuth start AND callback
 export const login = async (request) => {
   const url = new URL(request.url);
   const shop = url.searchParams.get("shop");
+  const code = url.searchParams.get("code");
   
+  // If there's a code, this is the OAuth callback
+  if (code) {
+    console.log("🔄 OAuth callback triggered (via login route)");
+    console.log("Code received:", code.substring(0, 10) + "...");
+    
+    const { session } = await shopify.auth.callback({
+      rawRequest: request,
+    });
+
+    console.log("✅ OAuth callback received:", {
+      shop: session.shop,
+      sessionId: session.id,
+      hasToken: !!session.accessToken,
+      tokenPrefix: session.accessToken?.substring(0, 10),
+      isOnline: session.isOnline,
+      scope: session.scope,
+    });
+
+    // Verify session was saved
+    const savedSession = await prisma.session.findUnique({
+      where: { id: session.id }
+    });
+
+    if (!savedSession?.accessToken) {
+      console.error("❌ Session saved but missing accessToken!");
+      throw new Error("Failed to save access token");
+    }
+
+    console.log("✅ Session verified in database");
+
+    // Return redirect response
+    return {
+      status: 302,
+      headers: {
+        Location: `/?shop=${session.shop}&host=${Buffer.from(`${session.shop}/admin`).toString('base64')}`
+      }
+    };
+  }
+  
+  // Start OAuth flow
   if (!shop) {
     throw new Error("Missing shop parameter");
   }
@@ -74,7 +115,7 @@ export const login = async (request) => {
   
   return await shopify.auth.begin({
     shop,
-    callbackPath: "/auth/callback",
+    callbackPath: "/auth/login", // Points back to this same route
     isOnline: false,
     rawRequest: request
   });
