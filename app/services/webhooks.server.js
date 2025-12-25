@@ -1,13 +1,54 @@
 import prisma from "../db.server";
+import shopify from "../shopify.server";
+
+/**
+ * Fetch product tags from Shopify API
+ */
+async function getProductTags(productId, shop) {
+  try {
+    // Get session for the shop
+    const sessionId = `offline_${shop}`;
+    const session = await prisma.session.findUnique({
+      where: { id: sessionId }
+    });
+    
+    if (!session) {
+      console.error("No session found for shop:", shop);
+      return [];
+    }
+    
+    // Create REST client
+    const client = new shopify.clients.Rest({ session });
+    
+    // Fetch product
+    const response = await client.get({
+      path: `products/${productId}`
+    });
+    
+    const tags = response.body.product?.tags || "";
+    return tags.split(",").map(tag => tag.trim());
+  } catch (error) {
+    console.error("Error fetching product tags:", error.message);
+    return [];
+  }
+}
 
 /**
  * Check if order contains saddle products
  */
-function hasSaddleProducts(order) {
-  return order.line_items?.some(item => {
-    const tags = item.product?.tags || [];
-    return tags.some(tag => tag.toLowerCase() === "saddles");
-  });
+async function hasSaddleProducts(order, shop) {
+  for (const item of order.line_items || []) {
+    if (!item.product_id) continue;
+    
+    const tags = await getProductTags(item.product_id, shop);
+    const isSaddle = tags.some(tag => tag.toLowerCase() === "saddles");
+    
+    if (isSaddle) {
+      return true;
+    }
+  }
+  
+  return false;
 }
 
 /**
@@ -16,8 +57,8 @@ function hasSaddleProducts(order) {
 export async function processOrderWebhook(orderData, eventType, shop) {
   console.log(`Processing ${eventType} webhook for order ${orderData.name}`);
   
-  // Check if order has saddles
-  const hasSaddles = hasSaddleProducts(orderData);
+  // Check if order has saddles (fetch tags from API)
+  const hasSaddles = await hasSaddleProducts(orderData, shop);
   
   if (!hasSaddles) {
     console.log(`Order ${orderData.name} has no saddles, skipping`);
@@ -92,18 +133,15 @@ export async function processOrderWebhook(orderData, eventType, shop) {
   
   // Process line items
   for (const lineItem of orderData.line_items || []) {
-    const tags = lineItem.product?.tags || [];
+    if (!lineItem.product_id) continue;
+    
+    // Fetch product tags from API
+    const tags = await getProductTags(lineItem.product_id, shop);
     const isSaddle = tags.some(tag => tag.toLowerCase() === "saddles");
     
     if (!isSaddle) continue;
     
     const shopifyLineItemId = `gid://shopify/LineItem/${lineItem.id}`;
-    
-    // Check if line item already exists
-    const existingLineItem = await prisma.lineItem.findUnique({
-      where: { shopifyLineItemId },
-      include: { serialNumbers: true }
-    });
     
     // Upsert line item
     await prisma.lineItem.upsert({
@@ -134,22 +172,8 @@ export async function processOrderWebhook(orderData, eventType, shop) {
       }
     });
     
-    // Handle quantity changes
-    if (existingLineItem && existingLineItem.quantity !== lineItem.quantity) {
-      const oldQty = existingLineItem.quantity;
-      const newQty = lineItem.quantity;
-      const serialCount = existingLineItem.serialNumbers.length;
-      
-      console.log(`Quantity changed for ${lineItem.title}: ${oldQty} → ${newQty} (${serialCount} serials exist)`);
-      
-      if (newQty < oldQty && serialCount > newQty) {
-        console.warn(`⚠️ Quantity decreased but ${serialCount} serials exist. Manual review needed.`);
-        // Don't delete serials - keep for audit trail
-      }
-    }
-    
-    console.log(`Line item ${lineItem.title} processed`);
+    console.log(`Line item ${lineItem.title} (${lineItem.sku}) processed`);
   }
   
-  return { success: true, action: eventType, order: orderData.name };
+  return { success: true, action: eventType, orderId: dbOrder.id };
 }
