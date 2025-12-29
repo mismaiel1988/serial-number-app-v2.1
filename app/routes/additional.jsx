@@ -2,16 +2,29 @@ import { useLoaderData, Form, useNavigation, useActionData, Link } from "react-r
 import prisma from "../db.server";
 import { syncOrdersFromShopify } from "../services/orders.server";
 
-/**
- * Loader: Fetch orders from database
- */
 export async function loader({ request }) {
   try {
     // Get session from request (for embedded apps, session is in URL params)
     const url = new URL(request.url);
     const shop = url.searchParams.get("shop");
     
-    // Fetch orders with saddle line items
+    // Get pagination parameters
+    const page = parseInt(url.searchParams.get("page") || "1");
+    const perPage = 20;
+    const skip = (page - 1) * perPage;
+    
+    // Get total count of saddle orders
+    const totalOrders = await prisma.order.count({
+      where: {
+        lineItems: {
+          some: {
+            isSaddle: true
+          }
+        }
+      }
+    });
+    
+    // Fetch orders with saddle line items (paginated)
     const orders = await prisma.order.findMany({
       where: {
         lineItems: {
@@ -33,19 +46,38 @@ export async function loader({ request }) {
       orderBy: {
         createdAt: "desc"
       },
-      take: 50
+      take: perPage,
+      skip: skip
     });
-
+    
+    const totalPages = Math.ceil(totalOrders / perPage);
+    
     return {
       orders,
-      shop: shop || "Your Shop"
+      shop: shop || "Your Shop",
+      pagination: {
+        currentPage: page,
+        totalPages,
+        totalOrders,
+        perPage,
+        hasNextPage: page < totalPages,
+        hasPrevPage: page > 1
+      }
     };
   } catch (error) {
     console.error("Loader error:", error);
     return {
       orders: [],
       shop: "Error",
-      error: error.message
+      error: error.message,
+      pagination: {
+        currentPage: 1,
+        totalPages: 0,
+        totalOrders: 0,
+        perPage: 20,
+        hasNextPage: false,
+        hasPrevPage: false
+      }
     };
   }
 }
@@ -116,7 +148,7 @@ export async function action({ request }) {
  * Component: Orders page with sync functionality
  */
 export default function AdditionalPage() {
-  const { orders, shop, error } = useLoaderData();
+  const { orders, shop, error, pagination } = useLoaderData();
   const actionData = useActionData();
   const navigation = useNavigation();
   const isLoading = navigation.state === "submitting";
@@ -136,7 +168,7 @@ export default function AdditionalPage() {
         <div>
           <h1 style={{ margin: 0 }}>Saddle Orders</h1>
           <p style={{ color: "#666", margin: "5px 0 0 0" }}>
-            Shop: {shop} | Total orders: {orders.length}
+          Shop: {shop} | Total orders: {pagination.totalOrders} | Page {pagination.currentPage} of {pagination.totalPages}
           </p>
         </div>
         
@@ -285,6 +317,58 @@ export default function AdditionalPage() {
               ))}
             </tbody>
           </table>
+                {/* Pagination Controls */}
+      {pagination.totalPages > 1 && (
+        <div style={{
+          marginTop: "20px",
+          display: "flex",
+          justifyContent: "center",
+          alignItems: "center",
+          gap: "10px"
+        }}>
+          <Link
+            to={`/additional?shop=${shop}&page=${pagination.currentPage - 1}`}
+            style={{
+              padding: "8px 16px",
+              backgroundColor: pagination.hasPrevPage ? "#008060" : "#e1e3e5",
+              color: pagination.hasPrevPage ? "white" : "#999",
+              border: "none",
+              borderRadius: "4px",
+              textDecoration: "none",
+              fontSize: "14px",
+              fontWeight: "600",
+              pointerEvents: pagination.hasPrevPage ? "auto" : "none"
+            }}
+          >
+            ← Previous
+          </Link>
+          
+          <span style={{ fontSize: "14px", color: "#666" }}>
+            Page {pagination.currentPage} of {pagination.totalPages}
+          </span>
+          
+          <Link
+            to={`/additional?shop=${shop}&page=${pagination.currentPage + 1}`}
+            style={{
+              padding: "8px 16px",
+              backgroundColor: pagination.hasNextPage ? "#008060" : "#e1e3e5",
+              color: pagination.hasNextPage ? "white" : "#999",
+              border: "none",
+              borderRadius: "4px",
+              textDecoration: "none",
+              fontSize: "14px",
+              fontWeight: "600",
+              pointerEvents: pagination.hasNextPage ? "auto" : "none"
+            }}
+          >
+            Next →
+          </Link>
+        </div>
+      )}
+    </div>
+  );
+}
+
         </div>
       )}
     </div>
