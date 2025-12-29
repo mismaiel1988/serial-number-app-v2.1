@@ -2,6 +2,9 @@ import { useLoaderData, Form, useNavigation, useActionData, Link } from "react-r
 import prisma from "../db.server";
 import { syncOrdersFromShopify } from "../services/orders.server";
 
+/**
+ * Loader: Fetch orders from database
+ */
 export async function loader({ request }) {
   try {
     // Get session from request (for embedded apps, session is in URL params)
@@ -168,7 +171,7 @@ export default function AdditionalPage() {
         <div>
           <h1 style={{ margin: 0 }}>Saddle Orders</h1>
           <p style={{ color: "#666", margin: "5px 0 0 0" }}>
-          Shop: {shop} | Total orders: {pagination.totalOrders} | Page {pagination.currentPage} of {pagination.totalPages}
+            Shop: {shop} | Total orders: {pagination.totalOrders} | Page {pagination.currentPage} of {pagination.totalPages}
           </p>
         </div>
         
@@ -317,7 +320,10 @@ export default function AdditionalPage() {
               ))}
             </tbody>
           </table>
-                {/* Pagination Controls */}
+        </div>
+      )}
+
+      {/* Pagination Controls */}
       {pagination.totalPages > 1 && (
         <div style={{
           marginTop: "20px",
@@ -363,12 +369,6 @@ export default function AdditionalPage() {
           >
             Next →
           </Link>
-        </div>
-      )}
-    </div>
-  );
-}
-
         </div>
       )}
     </div>
