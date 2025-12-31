@@ -131,14 +131,15 @@ export async function action({ request }) {
     const formData = await request.formData();
     const actionType = formData.get("action");
     
-    if (actionType === "sync") {
-      const result = await syncOrdersFromShopify(session, {
-        limit: 250,
-        onlySaddleOrders: true
-      });
-      
-      return result;
-    }
+   if (actionType === "sync") {
+  const result = await syncOrdersFromShopify(session, {
+    onlySaddleOrders: true,
+    sinceDate: "2022-01-01" // Fetch all orders from 2022 onwards
+  });
+  
+  return result;
+}
+
     
     return { success: false, error: "Unknown action" };
   } catch (error) {
