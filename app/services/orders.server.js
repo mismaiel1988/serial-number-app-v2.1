@@ -12,44 +12,49 @@ import prisma from "../db.server";
  */
 function isSaddleProduct(lineItem) {
   const tags = lineItem.product?.tags || [];
-  
+
   // Check for EXACT "saddles" tag only (case-insensitive)
   const hasSaddleTag = tags.some(tag => tag.toLowerCase() === "saddles");
-  
+
   return hasSaddleTag;
 }
-
 
 /**
  * Sync orders from Shopify to local database
  */
 export async function syncOrdersFromShopify(session, options = {}) {
   const {
-    limit = 250,
     onlySaddleOrders = true,
-    sinceDate = null
+    sinceDate = "2022-01-01" // Fetch from 2022 onwards
   } = options;
 
   console.log("=== SYNC STARTED ===");
   console.log("Session:", { shop: session.shop, hasAccessToken: !!session.accessToken });
-  console.log("Options:", { limit, onlySaddleOrders });
+  console.log("Options:", { onlySaddleOrders, sinceDate });
 
   try {
     const client = new shopify.clients.Graphql({ session });
     console.log("GraphQL client created successfully");
-    
+
     let hasNextPage = true;
     let cursor = null;
     let totalOrders = 0;
     let totalLineItems = 0;
     let saddleLineItems = 0;
+    let batchNumber = 0;
 
     while (hasNextPage) {
-      console.log(`Fetching orders batch (cursor: ${cursor || 'initial'})`);
-      
+      batchNumber++;
+      console.log(`📦 Fetching batch ${batchNumber} (cursor: ${cursor || 'initial'})...`);
+
+      // Build query with pagination
+      const queryString = cursor
+        ? `first: 250, after: "${cursor}", sortKey: CREATED_AT, reverse: true`
+        : `first: 250, sortKey: CREATED_AT, reverse: true`;
+
       const query = `
-        query GetOrders($limit: Int!, $cursor: String) {
-          orders(first: $limit, after: $cursor, sortKey: CREATED_AT, reverse: true) {
+        query GetOrders {
+          orders(${queryString}) {
             pageInfo {
               hasNextPage
               endCursor
@@ -106,34 +111,38 @@ export async function syncOrdersFromShopify(session, options = {}) {
       `;
 
       console.log("Executing GraphQL query...");
-      
+
       // Fetch orders from Shopify
-      const response = await client.request(query, {
-        variables: {
-          limit,
-          cursor
-        }
-      });
+      const response = await client.request(query);
 
       console.log("GraphQL response received");
       console.log("Response data:", JSON.stringify(response.data, null, 2));
 
       const orders = response.data.orders.edges;
-      console.log(`Fetched ${orders.length} orders`);
-      
+      console.log(`Fetched ${orders.length} orders in batch ${batchNumber}`);
+
       // Process each order
       for (const { node: order } of orders) {
-        const lineItems = order.lineItems.edges.map(({ node }) => node);
+        // Filter by date - skip orders before sinceDate
+        const orderDate = new Date(order.createdAt);
+        const sinceDateObj = new Date(sinceDate);
         
-        // Check if order contains saddles
-        const hasSaddles = lineItems.some(isSaddleProduct);
-        
-        if (onlySaddleOrders && !hasSaddles) {
-          console.log(`Skipping order ${order.name} - no saddles`);
+        if (orderDate < sinceDateObj) {
+          console.log(`⏭️ Skipping order ${order.name} - created before ${sinceDate}`);
           continue;
         }
 
-        console.log(`Processing order ${order.name} with ${lineItems.length} line items`);
+        const lineItems = order.lineItems.edges.map(({ node }) => node);
+
+        // Check if order contains saddles
+        const hasSaddles = lineItems.some(isSaddleProduct);
+
+        if (onlySaddleOrders && !hasSaddles) {
+          console.log(`⏭️ Skipping order ${order.name} - no saddles`);
+          continue;
+        }
+
+        console.log(`✅ Processing order ${order.name} with ${lineItems.length} line items`);
 
         // Upsert order
         const dbOrder = await prisma.order.upsert({
@@ -172,12 +181,12 @@ export async function syncOrdersFromShopify(session, options = {}) {
         });
 
         totalOrders++;
-        console.log(`Order ${order.name} saved to database`);
+        console.log(`💾 Order ${order.name} saved to database`);
 
         // Upsert line items
         for (const lineItem of lineItems) {
           const isSaddle = isSaddleProduct(lineItem);
-          
+
           await prisma.lineItem.upsert({
             where: { shopifyLineItemId: lineItem.id },
             update: {
@@ -209,7 +218,7 @@ export async function syncOrdersFromShopify(session, options = {}) {
           totalLineItems++;
           if (isSaddle) {
             saddleLineItems++;
-            console.log(`  - Saddle line item: ${lineItem.title} (qty: ${lineItem.quantity})`);
+            console.log(`  🐴 Saddle line item: ${lineItem.title} (qty: ${lineItem.quantity})`);
           }
         }
       }
@@ -217,20 +226,34 @@ export async function syncOrdersFromShopify(session, options = {}) {
       // Check for next page
       hasNextPage = response.data.orders.pageInfo.hasNextPage;
       cursor = response.data.orders.pageInfo.endCursor;
-      
-      console.log(`Batch complete. hasNextPage: ${hasNextPage}`);
+
+      console.log(`✅ Batch ${batchNumber} complete. hasNextPage: ${hasNextPage}`);
+
+      // Safety limit to prevent infinite loops
+      if (batchNumber >= 200) {
+        console.warn("⚠️ Reached maximum batch limit (200 batches = 50,000 orders). Stopping sync.");
+        break;
+      }
+
+      // Small delay to avoid rate limits (Shopify allows ~2 requests/second)
+      if (hasNextPage) {
+        console.log("⏳ Waiting 500ms before next batch...");
+        await new Promise(resolve => setTimeout(resolve, 500));
+      }
     }
 
     console.log("=== SYNC COMPLETE ===");
-    console.log(`Total orders: ${totalOrders}`);
-    console.log(`Total line items: ${totalLineItems}`);
-    console.log(`Saddle line items: ${saddleLineItems}`);
+    console.log(`📊 Total batches: ${batchNumber}`);
+    console.log(`📊 Total orders: ${totalOrders}`);
+    console.log(`📊 Total line items: ${totalLineItems}`);
+    console.log(`📊 Saddle line items: ${saddleLineItems}`);
 
     return {
       success: true,
       totalOrders,
       totalLineItems,
-      saddleLineItems
+      saddleLineItems,
+      batchCount: batchNumber
     };
 
   } catch (error) {
@@ -244,4 +267,3 @@ export async function syncOrdersFromShopify(session, options = {}) {
     };
   }
 }
-
