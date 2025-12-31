@@ -27,6 +27,33 @@ export async function loader({ request }) {
       }
     });
     
+    // TEMPORARY DEBUG: Check oldest orders in database
+    const oldestOrders = await prisma.order.findMany({
+      where: {
+        lineItems: {
+          some: {
+            isSaddle: true
+          }
+        }
+      },
+      select: {
+        id: true,
+        orderNumber: true,
+        createdAt: true,
+        lastSyncedAt: true
+      },
+      orderBy: {
+        createdAt: "asc"  // Oldest first
+      },
+      take: 10
+    });
+
+    console.log("=== DEBUG: Oldest 10 saddle orders in database ===");
+    console.log(`Total saddle orders in DB: ${totalOrders}`);
+    oldestOrders.forEach(order => {
+      console.log(`Order ${order.orderNumber}: createdAt=${order.createdAt?.toISOString()}, lastSyncedAt=${order.lastSyncedAt?.toISOString()}`);
+    });
+    
     // Fetch orders with saddle line items (paginated)
     const orders = await prisma.order.findMany({
       where: {
@@ -54,6 +81,8 @@ export async function loader({ request }) {
     });
     
     const totalPages = Math.ceil(totalOrders / perPage);
+    
+    console.log(`=== Loader returning ${orders.length} orders, page ${page} of ${totalPages} ===`);
     
     return {
       orders,
@@ -84,6 +113,7 @@ export async function loader({ request }) {
     };
   }
 }
+
 
 /**
  * Action: Handle sync button click
