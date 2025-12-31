@@ -112,122 +112,147 @@ export async function syncOrdersFromShopify(session, options = {}) {
 
       console.log("Executing GraphQL query...");
 
-      // Fetch orders from Shopify
-      const response = await client.request(query);
+      let response;
+      try {
+        // Fetch orders from Shopify
+        response = await client.request(query);
+        console.log("GraphQL response received");
+      } catch (graphqlError) {
+        console.error("❌ GraphQL request failed:", graphqlError.message);
+        throw graphqlError;
+      }
 
-      console.log("GraphQL response received");
-      console.log("Response data:", JSON.stringify(response.data, null, 2));
+      // Check if response has data
+      if (!response?.data?.orders) {
+        console.error("❌ Invalid response structure:", JSON.stringify(response, null, 2));
+        throw new Error("Invalid GraphQL response - missing orders data");
+      }
 
-      const orders = response.data.orders.edges;
-      console.log(`Fetched ${orders.length} orders in batch ${batchNumber}`);
+      const orders = response.data.orders.edges || [];
+      console.log(`✅ Fetched ${orders.length} orders in batch ${batchNumber}`);
+
+      if (orders.length === 0) {
+        console.log("⚠️ No orders returned in this batch");
+        break;
+      }
 
       // Process each order
+      let processedInBatch = 0;
       for (const { node: order } of orders) {
-        // Filter by date - skip orders before sinceDate
-        const orderDate = new Date(order.createdAt);
-        const sinceDateObj = new Date(sinceDate);
-        
-        if (orderDate < sinceDateObj) {
-          console.log(`⏭️ Skipping order ${order.name} - created before ${sinceDate}`);
-          continue;
-        }
-
-        const lineItems = order.lineItems.edges.map(({ node }) => node);
-
-        // Check if order contains saddles
-        const hasSaddles = lineItems.some(isSaddleProduct);
-
-        if (onlySaddleOrders && !hasSaddles) {
-          console.log(`⏭️ Skipping order ${order.name} - no saddles`);
-          continue;
-        }
-
-        console.log(`✅ Processing order ${order.name} with ${lineItems.length} line items`);
-
-        // Upsert order
-        const dbOrder = await prisma.order.upsert({
-          where: { shopifyOrderId: order.id },
-          update: {
-            orderNumber: order.name,
-            orderName: order.name,
-            updatedAt: new Date(order.updatedAt),
-            fulfillmentStatus: order.displayFulfillmentStatus,
-            financialStatus: order.displayFinancialStatus,
-            customerName: order.customer?.displayName,
-            customerEmail: order.customer?.email,
-            customerPhone: order.customer?.phone,
-            totalPrice: order.totalPriceSet?.shopMoney?.amount,
-            currency: order.totalPriceSet?.shopMoney?.currencyCode,
-            tags: order.tags?.join(", "),
-            note: order.note,
-            lastSyncedAt: new Date()
-          },
-          create: {
-            shopifyOrderId: order.id,
-            orderNumber: order.name,
-            orderName: order.name,
-            createdAt: new Date(order.createdAt),
-            fulfillmentStatus: order.displayFulfillmentStatus,
-            financialStatus: order.displayFinancialStatus,
-            customerName: order.customer?.displayName,
-            customerEmail: order.customer?.email,
-            customerPhone: order.customer?.phone,
-            totalPrice: order.totalPriceSet?.shopMoney?.amount,
-            currency: order.totalPriceSet?.shopMoney?.currencyCode,
-            tags: order.tags?.join(", "),
-            note: order.note,
-            lastSyncedAt: new Date()
+        try {
+          // Filter by date - skip orders before sinceDate
+          const orderDate = new Date(order.createdAt);
+          const sinceDateObj = new Date(sinceDate);
+          
+          if (orderDate < sinceDateObj) {
+            console.log(`⏭️ Skipping order ${order.name} - created ${orderDate.toISOString().split('T')[0]} (before ${sinceDate})`);
+            continue;
           }
-        });
 
-        totalOrders++;
-        console.log(`💾 Order ${order.name} saved to database`);
+          const lineItems = order.lineItems.edges.map(({ node }) => node);
 
-        // Upsert line items
-        for (const lineItem of lineItems) {
-          const isSaddle = isSaddleProduct(lineItem);
+          // Check if order contains saddles
+          const hasSaddles = lineItems.some(isSaddleProduct);
 
-          await prisma.lineItem.upsert({
-            where: { shopifyLineItemId: lineItem.id },
+          if (onlySaddleOrders && !hasSaddles) {
+            console.log(`⏭️ Skipping order ${order.name} - no saddles`);
+            continue;
+          }
+
+          console.log(`✅ Processing order ${order.name} (${orderDate.toISOString().split('T')[0]}) with ${lineItems.length} line items`);
+
+          // Upsert order
+          const dbOrder = await prisma.order.upsert({
+            where: { shopifyOrderId: order.id },
             update: {
-              productTitle: lineItem.title,
-              variantTitle: lineItem.variantTitle,
-              sku: lineItem.sku,
-              quantity: lineItem.quantity,
-              price: lineItem.originalUnitPriceSet?.shopMoney?.amount,
-              isSaddle,
-              productType: lineItem.product?.productType,
-              productTags: lineItem.product?.tags?.join(", ")
+              orderNumber: order.name,
+              orderName: order.name,
+              updatedAt: new Date(order.updatedAt),
+              fulfillmentStatus: order.displayFulfillmentStatus,
+              financialStatus: order.displayFinancialStatus,
+              customerName: order.customer?.displayName,
+              customerEmail: order.customer?.email,
+              customerPhone: order.customer?.phone,
+              totalPrice: order.totalPriceSet?.shopMoney?.amount,
+              currency: order.totalPriceSet?.shopMoney?.currencyCode,
+              tags: order.tags?.join(", "),
+              note: order.note,
+              lastSyncedAt: new Date()
             },
             create: {
-              shopifyLineItemId: lineItem.id,
-              orderId: dbOrder.id,
-              productId: lineItem.product?.id,
-              variantId: lineItem.variant?.id,
-              productTitle: lineItem.title,
-              variantTitle: lineItem.variantTitle,
-              sku: lineItem.sku,
-              quantity: lineItem.quantity,
-              price: lineItem.originalUnitPriceSet?.shopMoney?.amount,
-              isSaddle,
-              productType: lineItem.product?.productType,
-              productTags: lineItem.product?.tags?.join(", ")
+              shopifyOrderId: order.id,
+              orderNumber: order.name,
+              orderName: order.name,
+              createdAt: new Date(order.createdAt),
+              fulfillmentStatus: order.displayFulfillmentStatus,
+              financialStatus: order.displayFinancialStatus,
+              customerName: order.customer?.displayName,
+              customerEmail: order.customer?.email,
+              customerPhone: order.customer?.phone,
+              totalPrice: order.totalPriceSet?.shopMoney?.amount,
+              currency: order.totalPriceSet?.shopMoney?.currencyCode,
+              tags: order.tags?.join(", "),
+              note: order.note,
+              lastSyncedAt: new Date()
             }
           });
 
-          totalLineItems++;
-          if (isSaddle) {
-            saddleLineItems++;
-            console.log(`  🐴 Saddle line item: ${lineItem.title} (qty: ${lineItem.quantity})`);
+          totalOrders++;
+          processedInBatch++;
+          console.log(`💾 Order ${order.name} saved to database (${processedInBatch} in this batch)`);
+
+          // Upsert line items
+          for (const lineItem of lineItems) {
+            const isSaddle = isSaddleProduct(lineItem);
+
+            await prisma.lineItem.upsert({
+              where: { shopifyLineItemId: lineItem.id },
+              update: {
+                productTitle: lineItem.title,
+                variantTitle: lineItem.variantTitle,
+                sku: lineItem.sku,
+                quantity: lineItem.quantity,
+                price: lineItem.originalUnitPriceSet?.shopMoney?.amount,
+                isSaddle,
+                productType: lineItem.product?.productType,
+                productTags: lineItem.product?.tags?.join(", ")
+              },
+              create: {
+                shopifyLineItemId: lineItem.id,
+                orderId: dbOrder.id,
+                productId: lineItem.product?.id,
+                variantId: lineItem.variant?.id,
+                productTitle: lineItem.title,
+                variantTitle: lineItem.variantTitle,
+                sku: lineItem.sku,
+                quantity: lineItem.quantity,
+                price: lineItem.originalUnitPriceSet?.shopMoney?.amount,
+                isSaddle,
+                productType: lineItem.product?.productType,
+                productTags: lineItem.product?.tags?.join(", ")
+              }
+            });
+
+            totalLineItems++;
+            if (isSaddle) {
+              saddleLineItems++;
+              console.log(`  🐴 Saddle line item: ${lineItem.title} (qty: ${lineItem.quantity})`);
+            }
           }
+        } catch (orderError) {
+          console.error(`❌ Error processing order ${order.name}:`, orderError.message);
+          // Continue with next order instead of failing entire sync
+          continue;
         }
       }
+
+      console.log(`✅ Batch ${batchNumber} processed: ${processedInBatch} orders saved`);
 
       // Check for next page
       hasNextPage = response.data.orders.pageInfo.hasNextPage;
       cursor = response.data.orders.pageInfo.endCursor;
 
-      console.log(`✅ Batch ${batchNumber} complete. hasNextPage: ${hasNextPage}`);
+      console.log(`📄 Pagination: hasNextPage=${hasNextPage}, cursor=${cursor ? cursor.substring(0, 20) + '...' : 'null'}`);
 
       // Safety limit to prevent infinite loops
       if (batchNumber >= 200) {
@@ -244,7 +269,7 @@ export async function syncOrdersFromShopify(session, options = {}) {
 
     console.log("=== SYNC COMPLETE ===");
     console.log(`📊 Total batches: ${batchNumber}`);
-    console.log(`📊 Total orders: ${totalOrders}`);
+    console.log(`📊 Total orders saved: ${totalOrders}`);
     console.log(`📊 Total line items: ${totalLineItems}`);
     console.log(`📊 Saddle line items: ${saddleLineItems}`);
 
